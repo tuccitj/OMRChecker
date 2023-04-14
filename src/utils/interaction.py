@@ -38,6 +38,9 @@ class InteractionUtils:
         else:
             img = origin
 
+        # Allows window to be resized - necessary for working with larger images in interactive mode
+        cv2.namedWindow(name, cv2.WINDOW_NORMAL)
+
         cv2.imshow(name, img)
 
         if reset_pos:
