@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-
+import matplotlib.pyplot as plt
 import cv2
 from screeninfo import get_monitors
 
@@ -38,10 +38,10 @@ class InteractionUtils:
         else:
             img = origin
 
-        # Allows window to be resized - necessary for working with larger images in interactive mode
-        cv2.namedWindow(name, cv2.WINDOW_NORMAL)
 
-        cv2.imshow(name, img)
+        # Show the original image w/scale
+        plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+        plt.show()
 
         if reset_pos:
             image_metrics.window_x = reset_pos[0]
