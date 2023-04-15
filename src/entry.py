@@ -9,6 +9,7 @@
 import os
 from csv import QUOTE_NONNUMERIC
 from pathlib import Path
+import platform
 from time import time
 
 import cv2
@@ -64,7 +65,10 @@ def process_dir(
     paths = Paths(output_dir)
 
     # look for images in current dir to process
-    exts = ("*.png", "*.jpg", "*.jpeg", "*.PNG", "*.JPG", "*.JPEG")
+    if platform.system() == "Windows":
+        exts = ("*.png", "*.jpg", "*.jpeg")
+    else:
+        exts = ("*.png", "*.jpg", "*.jpeg", "*.PNG", "*.JPG", "*.JPEG")
     omr_files = sorted([f for ext in exts for f in curr_dir.glob(ext)])
 
     # Exclude images (take union over all pre_processors)
