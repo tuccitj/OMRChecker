@@ -40,6 +40,18 @@ FIELD_TYPES = {
     #
     # You can create and append custom field types here-
     #
+    "QTYPE_CHESSPIECE": {
+        "bubbleValues": ["p", "b", "k", "q", "n", "r", "0-0", "-0", "X"],
+        "direction": "horizontal",
+    },
+    "QTYPE_POSITIONX": {
+        "bubbleValues": ["a", "b", "c", "d", "e", "f", "g", "h", "+"],
+        "direction": "horizontal",
+    },
+    "QTYPE_POSITIONY": {
+        "bubbleValues": ["1", "2", "3", "4", "5", "6", "7", "8", "="],
+        "direction": "horizontal",
+    },
 }
 
 # TODO: move to interaction.py
