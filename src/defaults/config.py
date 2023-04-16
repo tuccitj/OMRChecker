@@ -5,8 +5,8 @@ CONFIG_DEFAULTS = DotMap(
         "dimensions": {
             "display_height": 2480,
             "display_width": 1640,
-            "processing_height": 820,
-            "processing_width": 666,
+            "processing_height": 4000,
+            "processing_width": 3000,
         },
         "threshold_params": {
             "GAMMA_LOW": 0.7,

@@ -13,6 +13,7 @@ import platform
 from time import time
 
 import cv2
+from matplotlib import pyplot as plt
 import pandas as pd
 from rich.table import Table
 
@@ -111,7 +112,10 @@ def process_dir(
 
         setup_dirs_for_paths(paths)
         outputs_namespace = setup_outputs_for_template(paths, template)
-
+        if args["detectRectangles"]:
+            show_rectangle_layouts(omr_files, template, tuning_config)
+        else:
+            print("i dunno")
         if args["setLayout"]:
             show_template_layouts(omr_files, template, tuning_config)
         else:
@@ -138,6 +142,8 @@ def process_dir(
                 evaluation_config,
                 outputs_namespace,
             )
+            
+       
 
     elif not subdirs:
         # Each subdirectory should have images or should be non-leaf
@@ -163,9 +169,60 @@ def show_template_layouts(omr_files, template, tuning_config):
         file_name = file_path.name
         file_path = str(file_path)
         in_omr = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
+        plt.title("imread_grayscale")
+        plt.imshow(in_omr)
+        plt.show()
         in_omr = template.image_instance_ops.apply_preprocessors(
             file_path, in_omr, template
         )
+        template_layout = template.image_instance_ops.draw_template_layout(
+            in_omr, template, shifted=False, border=2
+        )
+        InteractionUtils.show(
+            f"Template Layout: {file_name}", template_layout, 1, 1, config=tuning_config
+        )
+        
+def show_rectangle_layouts(omr_files, template, tuning_config):
+    for file_path in omr_files:
+        file_name = file_path.name
+        file_path = str(file_path)
+        in_omr = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
+        in_omr = template.image_instance_ops.apply_preprocessors(
+            file_path, in_omr, template
+        )
+        in_omr = cv2.imread(file_path, cv2.COLOR_BGR2GRAY)
+        
+        # Apply edge detection to the grayscale image
+        edged = cv2.Canny(in_omr, 50, 200)
+
+        # Find contours in the edge map
+        contours, hierarchy = cv2.findContours(edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # Initialize a list to store the coordinates of the rectangles
+        rect_coords = []
+
+        # Iterate through the contours and filter for rectangles
+        for cnt in contours:
+            approx = cv2.approxPolyDP(cnt, 0.01 * cv2.arcLength(cnt, True), True)
+            if len(approx) == 4:
+                x, y, w, h = cv2.boundingRect(approx)
+                rect_coords.append((x, y, w, h))
+
+        # Sort the rectangles by their y-coordinate first and then by their x-coordinate
+        rect_coords = sorted(rect_coords, key=lambda x: (x[1], x[0]))
+
+        # Draw the rectangles on the image in the sorted order
+        for i, (x, y, w, h) in enumerate(rect_coords):
+            cv2.rectangle(in_omr, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            print("Rectangle %d: (x=%d, y=%d, w=%d, h=%d)" % (i+1, x, y, w, h))
+
+        # Show the detected rectangles on the original image
+        plt.imshow(cv2.cvtColor(in_omr, cv2.COLOR_BGR2RGB))
+        plt.show()
+        
+        
+        
+        
         template_layout = template.image_instance_ops.draw_template_layout(
             in_omr, template, shifted=False, border=2
         )

@@ -76,6 +76,7 @@ TEMPLATE_SCHEMA = {
                             "GaussianBlur",
                             "Levels",
                             "MedianBlur",
+                            "DetectRectangles"
                         ],
                     },
                 },

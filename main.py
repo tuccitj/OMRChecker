@@ -58,6 +58,15 @@ def parse_args():
         help="Set up OMR template layout - modify your json file and \
         run again until the template is set.",
     )
+    
+    argparser.add_argument(
+        "-dr",
+        "--detectRectangles",
+        required=False,
+        dest="detectRectangles",
+        action="store_true",
+        help="Automatically detect rectangles and generate template",
+    )
 
     (
         args,
