@@ -29,7 +29,7 @@ class InteractionUtils:
         if origin is None:
             logger.info(f"'{name}' - NoneType image to show!")
             if pause:
-                cv2.destroyAllWindows()
+                plt.close()
             return
         if resize:
             if not config:
@@ -39,19 +39,24 @@ class InteractionUtils:
             img = origin
 
 
-        # Show the original image w/scale
+        # Show the original image w/scale and x,y coords
+        mng = plt.get_current_fig_manager()
+        mng.set_window_title(name)
         plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-        plt.show()
 
         if reset_pos:
             image_metrics.window_x = reset_pos[0]
             image_metrics.window_y = reset_pos[1]
 
-        cv2.moveWindow(
-            name,
-            image_metrics.window_x,
-            image_metrics.window_y,
-        )
+        plt.subplots_adjust(left=0, right=1, bottom=0, top=1)
+
+        h, w = img.shape[:2]
+        
+        # cv2.move.moveWindow(
+        #     name,
+        #     image_metrics.window_x,
+        #     image_metrics.window_y,
+        # )
 
         h, w = img.shape[:2]
 
@@ -74,8 +79,8 @@ class InteractionUtils:
             )
 
             wait_q()
-            InteractionUtils.image_metrics.window_x = 0
-            InteractionUtils.image_metrics.window_y = 0
+            # InteractionUtils.image_metrics.window_x = 0
+            # InteractionUtils.image_metrics.window_y = 0
 
 
 @dataclass
@@ -87,9 +92,14 @@ class Stats:
     files_moved = 0
     files_not_moved = 0
 
-
 def wait_q():
-    esc_key = 27
-    while cv2.waitKey(1) & 0xFF not in [ord("q"), esc_key]:
-        pass
-    cv2.destroyAllWindows()
+    while True:
+        if plt.waitforbuttonpress():
+            break
+    plt.close()
+
+# def wait_q():
+#     esc_key = 27
+#     while cv2.waitKey(1) & 0xFF not in [ord("q"), esc_key]:
+#         pass
+#     cv2.destroyAllWindows()
