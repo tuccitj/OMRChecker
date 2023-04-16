@@ -11,8 +11,6 @@ class DetectRectangles(ImagePreprocessor):
         """Apply filter to the image and returns modified image"""
         #TODO add handling for filtering by rectangle min and max size, 
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        plt.imshow(image)
-        plt.show()
         # Apply Gaussian blur to reduce noise
         blurred = cv2.GaussianBlur(image, (5, 5), 0)
         # Convert the image to grayscale
