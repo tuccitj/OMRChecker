@@ -112,10 +112,7 @@ def process_dir(
 
         setup_dirs_for_paths(paths)
         outputs_namespace = setup_outputs_for_template(paths, template)
-        if args["detectRectangles"]:
-            show_rectangle_layouts(omr_files, template, tuning_config)
-        else:
-            print("i dunno")
+    
         if args["setLayout"]:
             show_template_layouts(omr_files, template, tuning_config)
         else:
