@@ -29,8 +29,17 @@ from src.utils.parsing import get_concatenated_response, open_config_with_defaul
 
 # Load processors
 STATS = Stats()
-
-
+def hi():
+    #Wrong...we want to initialize a template and configure manually. Could keep a base template and then make changes dynamically...let's see...
+    template = Template("template_path", tuning_config="hi")
+    #TODO Generate custom labels and field_blocks
+    # well...possible however currently, field_block gen is is happening at a preprocessing level...let's take a closer look... a processor is expected to return an image...
+    # we need to return the x coordinates divided by 3 and draw individual bounding boxes...so this preprocessing step is nice so that we can ensure rectangle detection is working
+    # however, it doesn't really help us...so how do we connect these two pieces of code in an effective way?
+    # well perhaps there should be a post preprocessing step that's before the processing step...rendundant but need the granularity
+    template.custom_labels = ""
+    template.field_blocks = ""
+    
 def entry_point(input_dir, args):
     if not os.path.exists(input_dir):
         raise Exception(f"Given input directory does not exist: '{input_dir}'")
@@ -50,10 +59,10 @@ def process_dir(
     local_config_path = curr_dir.joinpath(constants.CONFIG_FILENAME)
     if os.path.exists(local_config_path):
         tuning_config = open_config_with_defaults(local_config_path)
-
     # Update local template (in current recursion stack)
     local_template_path = curr_dir.joinpath(constants.TEMPLATE_FILENAME)
     local_template_exists = os.path.exists(local_template_path)
+    #TODO GENERATE MY OWN TEMPLATE
     if local_template_exists:
         template = Template(
             local_template_path,
@@ -169,6 +178,7 @@ def show_template_layouts(omr_files, template, tuning_config):
         in_omr = template.image_instance_ops.apply_preprocessors(
             file_path, in_omr, template
         )
+        #TODO image_instance_ops.draw_rectangle_layout
         template_layout = template.image_instance_ops.draw_template_layout(
             in_omr, template, shifted=False, border=2
         )
@@ -246,14 +256,22 @@ def process_files(
         logger.info(
             f"({files_counter}) Opening image: \t'{file_path}'\tResolution: {in_omr.shape}"
         )
-
+        # reset list of images to be saved
         template.image_instance_ops.reset_all_save_img()
-
+        # append initial image
         template.image_instance_ops.append_save_img(1, in_omr)
-
+        # apply preprocessing - in my case simply crop
         in_omr = template.image_instance_ops.apply_preprocessors(
             file_path, in_omr, template
         )
+          # now we would have our cropped image...so we need to apply our rectangle detection logic
+        x,y,w,h = detect_rectangles(in_omr)
+        # with these coordinates, update Template
+        template=Template()
+        template.custom_labels = generate_custom_labels(x,y,w,h)
+        template.field_blocks = generate_field_blocks(x,y,w,h)
+        template.page_dimensions = get_page_dimenstions()
+        template.bubble_dimensions = get_bubble_dimensions()
 
         if in_omr is None:
             # Error OMR case

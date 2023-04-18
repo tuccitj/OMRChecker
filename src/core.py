@@ -14,7 +14,7 @@ from src.utils.interaction import InteractionUtils
 
 class ImageInstanceOps:
     """Class to hold fine-tuned utilities for a group of images. One instance for each processing directory."""
-
+    #TODO check for flag in entry.py line 267 ifAutoGen and Type == rectangle and if so run, generate_field_blocks, then generate_custom_labels, if possible, auto gen bubble dimensions...possibly based on role #
     save_img_list: Any = defaultdict(list)
 
     def __init__(self, tuning_config):
