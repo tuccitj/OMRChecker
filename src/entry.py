@@ -62,7 +62,7 @@ def process_dir(
     # Update local template (in current recursion stack)
     local_template_path = curr_dir.joinpath(constants.TEMPLATE_FILENAME)
     local_template_exists = os.path.exists(local_template_path)
-    #TODO GENERATE MY OWN TEMPLATE
+    
     if local_template_exists:
         template = Template(
             local_template_path,
@@ -174,14 +174,21 @@ def show_template_layouts(omr_files, template, tuning_config):
     for file_path in omr_files:
         file_name = file_path.name
         file_path = str(file_path)
+        print(template.bubble_dimensions)
         in_omr = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
         in_omr = template.image_instance_ops.apply_preprocessors(
             file_path, in_omr, template
         )
+        print("Before generate_template:", template.bubble_dimensions)
         #TODO image_instance_ops.draw_rectangle_layout
+        template = template.image_instance_ops.generate_template(in_omr, template)
+        template.finish_setup()
+        print("After generate_template:", template.bubble_dimensions)
         template_layout = template.image_instance_ops.draw_template_layout(
             in_omr, template, shifted=False, border=2
         )
+        print("After draw_template_layout:", template.bubble_dimensions)
+        
         InteractionUtils.show(
             f"Template Layout: {file_name}", template_layout, 1, 1, config=tuning_config
         )
@@ -264,14 +271,15 @@ def process_files(
         in_omr = template.image_instance_ops.apply_preprocessors(
             file_path, in_omr, template
         )
-          # now we would have our cropped image...so we need to apply our rectangle detection logic
-        x,y,w,h = detect_rectangles(in_omr)
-        # with these coordinates, update Template
-        template=Template()
-        template.custom_labels = generate_custom_labels(x,y,w,h)
-        template.field_blocks = generate_field_blocks(x,y,w,h)
-        template.page_dimensions = get_page_dimenstions()
-        template.bubble_dimensions = get_bubble_dimensions()
+        template.field_blocks, template.custom_labels = template.image_instance_ops.generate_template(file_path, in_omr, template)
+        #   # now we would have our cropped image...so we need to apply our rectangle detection logic
+        # x,y,w,h = detect_rectangles(in_omr)
+        # # with these coordinates, update Template
+        # template=Template()
+        # template.custom_labels = generate_custom_labels(x,y,w,h)
+        # template.field_blocks = generate_field_blocks(x,y,w,h)
+        # template.page_dimensions = get_page_dimenstions()
+        # template.bubble_dimensions = get_bubble_dimensions()
 
         if in_omr is None:
             # Error OMR case

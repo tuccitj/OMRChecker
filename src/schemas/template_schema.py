@@ -183,6 +183,11 @@ TEMPLATE_SCHEMA = {
                 ],
             },
         },
+        "autoGenerateTemplate": {
+            "description": "Contains configuration for automatic template generation",
+            "type": "object",
+
+        },
         "fieldBlocks": {
             "description": "The fieldBlocks denote small groups of adjacent fields",
             "type": "object",

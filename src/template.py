@@ -21,7 +21,6 @@ class Template:
     def __init__(self, template_path, tuning_config):
         self.path = template_path
         self.image_instance_ops = ImageInstanceOps(tuning_config)
-        
         json_object = open_template_with_defaults(template_path)
         (
             custom_labels_object,
@@ -32,6 +31,7 @@ class Template:
             self.global_empty_val,
             self.options,
             self.page_dimensions,
+            self.autoGenerateTemplate
         ) = map(
             json_object.get,
             [
@@ -43,24 +43,40 @@ class Template:
                 "emptyValue",
                 "options",
                 "pageDimensions",
+                "autoGenerateTemplate"
             ],
         )
+        if self.autoGenerateTemplate:
+            self.parse_output_columns(output_columns_array)
+            self.setup_pre_processors(pre_processors_object, template_path.parent)
+            self.field_blocks_object = field_blocks_object
+            self.custom_labels_object=custom_labels_object
+        else:
+            self.setup_field_blocks(field_blocks_object)
+            self.parse_output_columns(output_columns_array)
+            self.setup_pre_processors(pre_processors_object, template_path.parent)
+            self.setup_field_blocks(field_blocks_object)
+            self.parse_custom_labels(custom_labels_object)
+            non_custom_columns, all_custom_columns = (
+                list(self.non_custom_labels),
+                list(custom_labels_object.keys()),
+            )
+            if len(self.output_columns) == 0:
+                self.fill_output_columns(non_custom_columns, all_custom_columns)
+            self.validate_template_columns(non_custom_columns, all_custom_columns)
 
-        self.parse_output_columns(output_columns_array)
-        self.setup_pre_processors(pre_processors_object, template_path.parent)
-        self.setup_field_blocks(field_blocks_object)
-        self.parse_custom_labels(custom_labels_object)
-
+    def finish_setup(self):
+        self.setup_field_blocks(self.field_blocks_object)
+        self.parse_custom_labels(self.custom_labels_object)
         non_custom_columns, all_custom_columns = (
             list(self.non_custom_labels),
-            list(custom_labels_object.keys()),
+            list(self.custom_labels_object.keys()),
         )
-
         if len(self.output_columns) == 0:
             self.fill_output_columns(non_custom_columns, all_custom_columns)
-
         self.validate_template_columns(non_custom_columns, all_custom_columns)
 
+        
     def parse_output_columns(self, output_columns_array):
         self.output_columns = parse_fields(f"Output Columns", output_columns_array)
 
@@ -304,7 +320,6 @@ class FieldBlock:
                 bubble_point[_h] += bubbles_gap
             self.traverse_bubbles.append(field_bubbles)
             lead_point[_v] += labels_gap
-
 
 class Bubble:
     """
