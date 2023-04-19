@@ -1,5 +1,7 @@
+from itertools import groupby
 import os
 from collections import defaultdict
+from pprint import pprint
 from typing import Any
 
 import cv2
@@ -10,7 +12,6 @@ import src.constants as constants
 from src.logger import logger
 from src.utils.image import CLAHE_HELPER, ImageUtils
 from src.utils.interaction import InteractionUtils
-
 
 class ImageInstanceOps:
     """Class to hold fine-tuned utilities for a group of images. One instance for each processing directory."""
@@ -35,7 +36,100 @@ class ImageInstanceOps:
         for pre_processor in template.pre_processors:
             in_omr = pre_processor.apply_filter(in_omr, file_path)
         return in_omr
+    
+    def generate_template(self, in_omr, template):
+        field_blocks = []
+        tuning_config = self.tuning_config
+        # resize to conform to template
+        in_omr = ImageUtils.resize_util(
+            in_omr,
+            tuning_config.dimensions.processing_width,
+            tuning_config.dimensions.processing_height,
+        )
+        rect_coords = self.get_rectangle_coords(in_omr)
+        # Determine Bubble Dimensions [width, height]
+        x, y, w, h = rect_coords[0]
+        width = w/9
+        height = h/3
+        template.bubble_dimensions = [width, height]
+        template.bubbles_gap = width
 
+        if len(template.field_blocks_object) == len(rect_coords)*3:
+            for coords in rect_coords:
+                for i, key in enumerate(template.field_blocks_object):
+                    field_block = template.field_blocks_object[key]
+                    field_type = field_block["fieldType"]
+                    x, y, w, h = coords
+                    if field_type == "QTYPE_CHESSPIECE":
+                        field_block["origin"] = [x,y]
+                    elif field_type == "QTYPE_POSITIONX":
+                        field_block["origin"] = [x,(y + h/3)]
+                    elif field_type == "QTYPE_POSITIONY":
+                        field_block["origin"] = [x,(y + (h/3))]
+                    field_block["bubblesGap"] = w/9
+                    template.field_blocks_object[key] = field_block
+                    
+                    pprint(field_block, indent=4)
+          
+        else:
+            print("Too many or too few rectangles detected")
+            
+        # for key, coord in enumerate(rect_coords):
+        #     x,y,w,h = coord
+        #     field_block = {}
+        #     field_block[f"m{key}_w"] = "fieldType": s 
+        return template
+        # we need to get the orientation and the number of elements in a roll...this is all in constants.py - how to access? we also do need the template
+        # so here is a design decision - if we are to generate based on field_type, the field types would  need to be provided in the template...if not,
+        # specify in the template.json options...
+    # ONLY IF PREPROCESSORS HAS BEEN RUN AND ONLY IF OMR_MARKER USED TO CROP PAGE
+    def get_rectangle_coords(self, in_omr):
+        image = in_omr
+        """Apply filter to the image and returns modified image"""
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        # Apply Gaussian blur to reduce noise
+        blurred = cv2.GaussianBlur(image, (5, 5), 0)
+        # Convert the image to grayscale
+        gray = cv2.cvtColor(blurred, cv2.COLOR_BGR2GRAY)
+        # Determine optimal threshold using Otsu's method
+        ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        # Apply edge detection to the grayscale image
+        edged = cv2.Canny(thresh, 10, 200)
+        # Find contours in the edge map
+        contours, hierarchy = cv2.findContours(edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # Initialize a list to store the coordinates of the rectangles
+        rect_coords = []
+        # Iterate through the contours and filter for rectangles
+        for cnt in contours:
+            approx = cv2.approxPolyDP(cnt, 0.01 * cv2.arcLength(cnt, True), True)
+            if len(approx) == 4:
+                x, y, w, h = cv2.boundingRect(approx)
+                if w > 50 and h > 50 and w < 1000 and h < 1000:  # Only consider rectangles with a width and height greater than 50 pixels
+                    rect_coords.append((x, y, w, h))
+        rect_coords.sort(key=lambda x: x[0])        
+        ##TODO tolerance should either be determined mathmatically w/distributions or set as a constant in config
+        tolerance = 10        
+        # group coordinates by x value with tolerance and sort each group by y value
+        rect_coords_grouped = []
+        for key, group in groupby(rect_coords, lambda x: round(x[0]/tolerance)):
+            rect_coords_grouped.extend(sorted(list(group), key=lambda x: x[1]))
+        # DEMONSTRATION Draw the rectangles on the image in the sorted order
+        # for i, (x, y, w, h) in enumerate(rect_coords_grouped):
+        #     cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        #     label = "{}".format(i+1)
+        #     font = cv2.FONT_HERSHEY_SIMPLEX
+        #     cv2.putText(image, label, (x, y - 5), font, 0.5, (0, 0, 255), 2)
+        #     image = cv2.cvtColor(image, cv2.IMREAD_GRAYSCALE)
+        # plt.imshow(image)
+        # plt.show()
+        return rect_coords_grouped
+    
+    def gen_field_blocks():
+        #naming convention
+        #
+        return("")
+    def gen_custom_labels():
+        return("")
     def read_omr_response(self, template, image, name, save_dir=None):
         config = self.tuning_config
         auto_align = config.alignment_params.auto_align
@@ -162,15 +256,15 @@ class ImageInstanceOps:
                         )
 
                         # For demonstration purposes-
-                        # if(field_block.name == "int1"):
-                        #     ret = morph_v.copy()
-                        #     cv2.rectangle(ret,
-                        #                   (s[0]+shift-thk,s[1]),
-                        #                   (s[0]+shift+thk+d[0],s[1]+d[1]),
-                        #                   constants.CLR_WHITE,
-                        #                   3)
-                        #     appendSaveImg(6,ret)
-                        # print(shift, left_mean, right_mean)
+                        if(field_block.name == "int1"):
+                            ret = morph_v.copy()
+                            cv2.rectangle(ret,
+                                          (s[0]+shift-thk,s[1]),
+                                          (s[0]+shift+thk+d[0],s[1]+d[1]),
+                                          constants.CLR_WHITE,
+                                          3)
+                            appendSaveImg(6,ret)
+                        print(shift, left_mean, right_mean)
                         left_shift, right_shift = left_mean > 100, right_mean > 100
                         if left_shift:
                             if right_shift:
@@ -185,10 +279,10 @@ class ImageInstanceOps:
                         steps += 1
 
                     field_block.shift = shift
-                    # print("Aligned field_block: ",field_block.name,"Corrected Shift:",
-                    #   field_block.shift,", dimensions:", field_block.dimensions,
-                    #   "origin:", field_block.origin,'\n')
-                # print("End Alignment")
+                    print("Aligned field_block: ",field_block.name,"Corrected Shift:",
+                      field_block.shift,", dimensions:", field_block.dimensions,
+                      "origin:", field_block.origin,'\n')
+                print("End Alignment")
 
             final_align = None
             if config.outputs.show_image_level >= 2:
@@ -202,6 +296,7 @@ class ImageInstanceOps:
 
                 if auto_align:
                     final_align = np.hstack((initial_align, final_align))
+                    print("FINAL ALIGN", final_align)
             self.append_save_img(5, img)
 
             # Get mean bubbleValues n other stats
