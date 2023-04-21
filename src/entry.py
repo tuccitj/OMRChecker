@@ -10,6 +10,7 @@ import os
 from csv import QUOTE_NONNUMERIC
 from pathlib import Path
 import platform
+from pprint import pprint
 from time import time
 
 import cv2
@@ -182,6 +183,7 @@ def show_template_layouts(omr_files, template, tuning_config):
         print("Before generate_template:", template.bubble_dimensions)
         #TODO image_instance_ops.draw_rectangle_layout
         template = template.image_instance_ops.generate_template(in_omr, template)
+        pprint(template.field_blocks_object, indent=4)
         template.finish_setup()
         print("After generate_template:", template.bubble_dimensions)
         template_layout = template.image_instance_ops.draw_template_layout(
@@ -271,15 +273,10 @@ def process_files(
         in_omr = template.image_instance_ops.apply_preprocessors(
             file_path, in_omr, template
         )
-        template.field_blocks, template.custom_labels = template.image_instance_ops.generate_template(file_path, in_omr, template)
-        #   # now we would have our cropped image...so we need to apply our rectangle detection logic
-        # x,y,w,h = detect_rectangles(in_omr)
-        # # with these coordinates, update Template
-        # template=Template()
-        # template.custom_labels = generate_custom_labels(x,y,w,h)
-        # template.field_blocks = generate_field_blocks(x,y,w,h)
-        # template.page_dimensions = get_page_dimenstions()
-        # template.bubble_dimensions = get_bubble_dimensions()
+        ##TODO Generate Custom Labels, also handle generate_template_flag here as well
+        if template.autoGenerateTemplate:
+            template = template.image_instance_ops.generate_template(in_omr, template)
+        template.finish_setup()
 
         if in_omr is None:
             # Error OMR case

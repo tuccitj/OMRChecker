@@ -46,31 +46,26 @@ class ImageInstanceOps:
             tuning_config.dimensions.processing_width,
             tuning_config.dimensions.processing_height,
         )
-        rect_coords = self.get_rectangle_coords(in_omr)
+        rect_coords,img2 = self.get_rectangle_coords(in_omr)
+        # test = self.get_test(in_omr)
+        
         # Determine Bubble Dimensions [width, height]
         x, y, w, h = rect_coords[0]
-        width = w/9
-        height = h/3
+        width = w//9
+        height = h//3
         template.bubble_dimensions = [width, height]
         template.bubbles_gap = width
-
-        if len(template.field_blocks_object) == len(rect_coords)*3:
-            for coords in rect_coords:
-                for i, key in enumerate(template.field_blocks_object):
-                    field_block = template.field_blocks_object[key]
-                    field_type = field_block["fieldType"]
-                    x, y, w, h = coords
-                    if field_type == "QTYPE_CHESSPIECE":
-                        field_block["origin"] = [x,y]
-                    elif field_type == "QTYPE_POSITIONX":
-                        field_block["origin"] = [x,(y + h/3)]
-                    elif field_type == "QTYPE_POSITIONY":
-                        field_block["origin"] = [x,(y + (h/3))]
-                    field_block["bubblesGap"] = w/9
-                    template.field_blocks_object[key] = field_block
-                    
-                    pprint(field_block, indent=4)
-          
+        sub_rect_coords = []
+        for x, y, w, h in rect_coords:
+            bubble_height = template.bubble_dimensions[1]
+            sub_rect_coords.extend([(x, y + i*bubble_height, w, bubble_height) for i in range(3)])
+        if len(template.field_blocks_object) == len(sub_rect_coords):
+            mapped_field_blocks = {}
+            for (x, y, w, _), (key, field_block) in zip(sub_rect_coords, template.field_blocks_object.items()):
+                field_block["origin"] = [x,y]
+                field_block["bubblesGap"] = w / 9
+                # mapped_field_blocks[key] = field_block
+            # template.field_blocks_object = mapped_field_blocks
         else:
             print("Too many or too few rectangles detected")
             
@@ -82,6 +77,40 @@ class ImageInstanceOps:
         # we need to get the orientation and the number of elements in a roll...this is all in constants.py - how to access? we also do need the template
         # so here is a design decision - if we are to generate based on field_type, the field types would  need to be provided in the template...if not,
         # specify in the template.json options...
+    def get_test(self, in_omr):
+        image = in_omr
+        """Apply filter to the image and returns modified image"""
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        # Apply Gaussian blur to reduce noise
+        blurred = cv2.GaussianBlur(image, (5, 5), 0)
+        # Convert the image to grayscale
+        gray = cv2.cvtColor(blurred, cv2.COLOR_BGR2GRAY)
+        # Determine optimal threshold using Otsu's method
+        ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        # Apply edge detection to the grayscale image
+        edged = cv2.Canny(thresh, 10, 200)
+        # Find contours in the edge map
+        contours, hierarchy = cv2.findContours(edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # Iterate through the contours and filter for polygons
+        polygons = []
+        for cnt in contours:
+            # Approximate the contour as a polygon
+            approx = cv2.approxPolyDP(cnt, 0.01 * cv2.arcLength(cnt, True), True)
+            # Draw the polygon on the original image
+            cv2.drawContours(image, [approx], 0, (0, 255, 0), 3)
+            # Only consider polygons with 4 vertices
+        
+    
+        plt.imshow(image)
+        plt.show()
+    # def get_test(self, in_omr):
+    #     img=in_omr
+    #     rect = (200, 300, 300, 400)   
+    #     image = img[rect[0] : rect[1], rect[2] : rect[3]]
+    #     plt.imshow(image)
+    #     plt.show()
+
     # ONLY IF PREPROCESSORS HAS BEEN RUN AND ONLY IF OMR_MARKER USED TO CROP PAGE
     def get_rectangle_coords(self, in_omr):
         image = in_omr
@@ -99,30 +128,59 @@ class ImageInstanceOps:
         contours, hierarchy = cv2.findContours(edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         # Initialize a list to store the coordinates of the rectangles
         rect_coords = []
+        boxes = []
         # Iterate through the contours and filter for rectangles
         for cnt in contours:
             approx = cv2.approxPolyDP(cnt, 0.01 * cv2.arcLength(cnt, True), True)
-            if len(approx) == 4:
-                x, y, w, h = cv2.boundingRect(approx)
-                if w > 50 and h > 50 and w < 1000 and h < 1000:  # Only consider rectangles with a width and height greater than 50 pixels
-                    rect_coords.append((x, y, w, h))
-        rect_coords.sort(key=lambda x: x[0])        
+            # Assume 'contour' is a list of points representing a polygon
+            rect = cv2.minAreaRect(cnt)
+            boxPoints = cv2.boxPoints(rect)
+            box = np.int0(boxPoints)
+   
+            _, _, w, h = cv2.boundingRect(box)
+            if w > 200 and h > 200 and w < 1000 and h < 1000:  # Only consider rectangles with a width and height greater than 50 pixels
+                boxes.append(box)
+        # for box in boxes:
+        #     # cv2.drawContours(image, [box], 0, (0, 255, 0), 3)
+        #     # x, y, w, h = cv2.boundingRect(box)
+        #     # cv2.rectangle(image, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        #     cv2.drawContours(image, [box], 0, (0, 255, 0), 3)
+            
+
+        # [print(box[0][0]) for box in boxes]
+        # Draw the polygon on the original image
+        sorted_boxes = sorted(boxes, key=lambda box: box[0][0])
         ##TODO tolerance should either be determined mathmatically w/distributions or set as a constant in config
-        tolerance = 10        
+        tolerance = 20      
         # group coordinates by x value with tolerance and sort each group by y value
         rect_coords_grouped = []
-        for key, group in groupby(rect_coords, lambda x: round(x[0]/tolerance)):
-            rect_coords_grouped.extend(sorted(list(group), key=lambda x: x[1]))
-        # DEMONSTRATION Draw the rectangles on the image in the sorted order
+        for key, group in groupby(sorted_boxes, lambda x: round(x[0][0]/tolerance)):
+            rect_coords_grouped.extend(sorted(list(group), key=lambda x: x[0][1]))
+        # Draw the boxes and label them
+        for i, box in enumerate(rect_coords_grouped):
+            cv2.drawContours(image, [box], 0, (0, 255, 0), 3)
+            # Calculate the moments of the contour
+            M = cv2.moments(box)
+            # Calculate the centroid
+            cx = int(M['m10'] / M['m00'])
+            cy = int(M['m01'] / M['m00'])
+            # # Draw the centroid on the image
+            # cv2.circle(image, (cx, cy), 5, (0, 0, 255), 100)
+            # Draw label at the centroid of the box
+            label = "{}".format(i+1)
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            cv2.putText(image, label, (cx, cy), font, 3, (0, 0, 255), 3)
+            image = cv2.cvtColor(image, cv2.IMREAD_GRAYSCALE)
+        # # DEMONSTRATION Draw the rectangles on the image in the sorted order
         # for i, (x, y, w, h) in enumerate(rect_coords_grouped):
-        #     cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        #     # cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
         #     label = "{}".format(i+1)
         #     font = cv2.FONT_HERSHEY_SIMPLEX
-        #     cv2.putText(image, label, (x, y - 5), font, 0.5, (0, 0, 255), 2)
+        #     cv2.putText(image, label, (x, y - 5), font, 5, (0, 0, 255), 5)
         #     image = cv2.cvtColor(image, cv2.IMREAD_GRAYSCALE)
-        # plt.imshow(image)
-        # plt.show()
-        return rect_coords_grouped
+        plt.imshow(image)
+        plt.show()
+        return rect_coords_grouped, image
     
     def gen_field_blocks():
         #naming convention
@@ -324,7 +382,6 @@ class ImageInstanceOps:
                     # print(total_q_strip_no, field_block_bubbles[0].field_label, q_std_vals[len(q_std_vals)-1])
                     total_q_strip_no += 1
                 all_q_std_vals.extend(q_std_vals)
-
             global_std_thresh, _, _ = self.get_global_threshold(
                 all_q_std_vals
             )  # , "Q-wise Std-dev Plot", plot_show=True, sort_in_plot=True)
