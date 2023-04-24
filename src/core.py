@@ -1,4 +1,5 @@
 from itertools import groupby
+import math
 import os
 from collections import defaultdict
 from pprint import pprint
@@ -12,6 +13,7 @@ import src.constants as constants
 from src.logger import logger
 from src.utils.image import CLAHE_HELPER, ImageUtils
 from src.utils.interaction import InteractionUtils
+from PIL import Image
 
 class ImageInstanceOps:
     """Class to hold fine-tuned utilities for a group of images. One instance for each processing directory."""
@@ -46,11 +48,11 @@ class ImageInstanceOps:
             tuning_config.dimensions.processing_width,
             tuning_config.dimensions.processing_height,
         )
-        rect_coords,img2 = self.get_rectangle_coords(in_omr)
+        boxes,img2 = self.get_rectangle_coords(in_omr)
         # test = self.get_test(in_omr)
         
         # Determine Bubble Dimensions [width, height]
-        x, y, w, h = rect_coords[0]
+        x, y, w, h = boxes[0]
         width = w//9
         height = h//3
         template.bubble_dimensions = [width, height]
@@ -77,6 +79,7 @@ class ImageInstanceOps:
         # we need to get the orientation and the number of elements in a roll...this is all in constants.py - how to access? we also do need the template
         # so here is a design decision - if we are to generate based on field_type, the field types would  need to be provided in the template...if not,
         # specify in the template.json options...
+    
     def get_test(self, in_omr):
         image = in_omr
         """Apply filter to the image and returns modified image"""
@@ -104,73 +107,181 @@ class ImageInstanceOps:
     
         plt.imshow(image)
         plt.show()
-    # def get_test(self, in_omr):
-    #     img=in_omr
-    #     rect = (200, 300, 300, 400)   
-    #     image = img[rect[0] : rect[1], rect[2] : rect[3]]
-    #     plt.imshow(image)
-    #     plt.show()
-
     # ONLY IF PREPROCESSORS HAS BEEN RUN AND ONLY IF OMR_MARKER USED TO CROP PAGE
     def get_rectangle_coords(self, in_omr):
         image = in_omr
-        """Apply filter to the image and returns modified image"""
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        # # Convert the image to grayscale
+        # gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        #       # Apply Gaussian blur to reduce noise
+        # blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        # Convert the image to grayscale
         # Apply Gaussian blur to reduce noise
         blurred = cv2.GaussianBlur(image, (5, 5), 0)
         # Convert the image to grayscale
         gray = cv2.cvtColor(blurred, cv2.COLOR_BGR2GRAY)
-        # Determine optimal threshold using Otsu's method
-        ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        # # Determine optimal threshold using Otsu's method
+        # ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        # Apply thresholding with a threshold value of 127
+        ret, thresh = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY)   
         # Apply edge detection to the grayscale image
         edged = cv2.Canny(thresh, 10, 200)
+        
         # Find contours in the edge map
         contours, hierarchy = cv2.findContours(edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         # Initialize a list to store the coordinates of the rectangles
-        rect_coords = []
         boxes = []
         # Iterate through the contours and filter for rectangles
-        for cnt in contours:
-            approx = cv2.approxPolyDP(cnt, 0.01 * cv2.arcLength(cnt, True), True)
-            # Assume 'contour' is a list of points representing a polygon
-            rect = cv2.minAreaRect(cnt)
-            boxPoints = cv2.boxPoints(rect)
-            box = np.int0(boxPoints)
-   
-            _, _, w, h = cv2.boundingRect(box)
-            if w > 200 and h > 200 and w < 1000 and h < 1000:  # Only consider rectangles with a width and height greater than 50 pixels
-                boxes.append(box)
-        # for box in boxes:
-        #     # cv2.drawContours(image, [box], 0, (0, 255, 0), 3)
-        #     # x, y, w, h = cv2.boundingRect(box)
-        #     # cv2.rectangle(image, (x, y), (x+w, y+h), (0, 255, 0), 2)
-        #     cv2.drawContours(image, [box], 0, (0, 255, 0), 3)
-            
+        # cv2.drawContours(image, contours, -1, (0, 255, 0), 2)
 
-        # [print(box[0][0]) for box in boxes]
-        # Draw the polygon on the original image
+        for cnt in contours:
+            # approx = cv2.approxPolyDP(cnt, 0.01 * cv2.arcLength(cnt, True), True)
+            # Assume 'contour' is a list of points representing a polygon
+            # rect = cv2.minAreaRect(cnt)
+            # boxPoints = cv2.boxPoints(rect)
+            # box = np.int0(boxPoints)
+            approx = cv2.approxPolyDP(cnt, 0.01*cv2.arcLength(cnt, True), True)
+    
+            _, _, w, h = cv2.boundingRect(approx)
+            if w > 200 and h > 200 and w < 1000 and h < 1000:  # Only consider rectangles with a width and height greater than 50 pixels
+                vertices = approx.ravel().reshape(-1, 2)
+                # Draw the vertices on the image
+                for vertex in vertices:
+                    cv2.circle(image, tuple(vertex), 5, (0, 0, 255), -1)
+                # cv2.drawContours(image, [approx], 0, (0, 0, 255), 2)
+                box =  np.int0([approx[0][0], approx[1][0], approx[2][0], approx[3][0]])    
+                box = self.sort_vertices(box)  
+                box = np.int0(box) 
+                boxes.append(box)
+                # box = self.sort_by_position(approx)
+                # box = np.int0(box)
+                # boxes.append(box)
+                # box = self.sort_by_position(box)
+                # box = np.int0(box)
+                # boxes.append(box)
+            # polygons = boxes
+            # for polygon in polygons:
+            #     # Sort the vertices of the polygon by their x-coordinate
+            #     sorted_indices = np.argsort(polygon[:, 0])
+            #     sorted_polygon = polygon[sorted_indices]
+
+            #     # Create empty lists to hold the vertices of the three resulting polygons
+            #     left_polygon = []
+            #     middle_polygon = []
+            #     right_polygon = []
+
+               
+            #     # Reverse the order of the vertices in the right polygon
+            #     right_polygon.reverse()
+            #     left_polygon= np.int0(left_polygon)
+            #     middle_polygon= np.int0(middle_polygon)
+            #     right_polygon= np.int0(right_polygon)
+                
+            #     cv2.polylines(image, [left_polygon], True, (0, 255, 0), 2)
+            #     cv2.polylines(image, [middle_polygon], True, (0, 255, 0), 2)
+            #     cv2.polylines(image, [right_polygon], True, (0, 255, 0), 2)
+                
+            #     plt.imshow(image)
+            #     plt.show()
+
         sorted_boxes = sorted(boxes, key=lambda box: box[0][0])
+        
         ##TODO tolerance should either be determined mathmatically w/distributions or set as a constant in config
-        tolerance = 20      
+        tolerance = 30      
         # group coordinates by x value with tolerance and sort each group by y value
         rect_coords_grouped = []
         for key, group in groupby(sorted_boxes, lambda x: round(x[0][0]/tolerance)):
             rect_coords_grouped.extend(sorted(list(group), key=lambda x: x[0][1]))
+        img = np.zeros((4000, 3000, 1), dtype=np.uint8)
         # Draw the boxes and label them
         for i, box in enumerate(rect_coords_grouped):
-            cv2.drawContours(image, [box], 0, (0, 255, 0), 3)
-            # Calculate the moments of the contour
+            print(boxes[i-1])
+            print(i, box)
+            # cv2.drawContours(image, [box[0]], 0, (255, 255, 255), 2) 
+            # Draw the rectangle on the image
+            cv2.polylines(image, [box], True, (0, 0, 255), 2)
+            label = "{}".format(i+1)
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            cv2.putText(image, label, (box[0][0], box[0][1]- 5), font, 5, (0, 0, 255), 5)
+            # cv2.fillPoly(img, [box], 255)
+            height = np.linalg.norm(box[3][1]-box[0][1])
+            split_height = int(height//3)
+            #don't keep x the same...find y, scope left until boundary is hit - that is the new uppermost left
+            upper_left = box[0]
+            upper_right = box[1]
+            lower_right = [box[1][0], box[1][1] + split_height]
+            lower_left = [box[0][0], box[0][1] + split_height]
+     
+            top_third = np.array([upper_left,upper_right,lower_right, lower_left])
+            upper_left = lower_left
+            upper_right = lower_right
+            lower_right = [box[1][0], box[1][1] + 2*split_height]
+            lower_left = [box[0][0], box[0][1] + 2*split_height]
+            middle_third = np.array([upper_left,upper_right,lower_right, lower_left])
+            
+            upper_left = lower_left
+            upper_right = lower_right
+            lower_right = [box[1][0], box[1][1] + 3*split_height]
+            lower_left = [box[0][0], box[0][1] + 3*split_height]
+            bottom_third = np.array([upper_left,upper_right,lower_right, lower_left])
+
+            # top_third=[upper_left,upper_right,lower_right, lower_left]
+            # cv2.drawContours(image, [top_third], 0, (255, 255, 255), 2)
+            # cv2.drawContours(image, [middle_third], 0, (255, 255, 255), 2)
+            # cv2.drawContours(image, [bottom_third], 0, (255, 255, 255), 2)
+            
+
+           
+            # # calculate the slope of the top line
+            # topLine = [box[0], box[1]]
+            # middleline = [[box[0][0]-25,box[0][1]+split_height],[box[1][0]+25,box[1][1]+split_height]]
+            # bottom = [[box[0][0],box[0][1]+2*split_height],[box[1][0],box[1][1]+2*split_height]]
+            # # Create a mask of the same size as the image
+            # mask = np.zeros_like(img)            
+            # # Draw the top half of the polygon on the mask
+            # cv2.drawContours(mask, [box], 0, 255, -1)
+            # cv2.rectangle(mask, (0,0), (mask.shape[1],middleline[0][1]), 0, -1)
+            # # Split the polygon based on the line
+            # split_mask = np.zeros_like(img)
+            # cv2.rectangle(split_mask, middleline[0], middleline[1], 255, -1)
+            # top_half = cv2.bitwise_and(mask, split_mask)
+            # bottom_half = cv2.bitwise_and(mask, cv2.bitwise_not(split_mask))
+            # # Display the results
+            # plt.title("Original")
+            # plt.imshow(img)
+            # plt.show()
+            # plt.title("Top Half")
+            # plt.imshow(top_half)
+            # plt.show()
+            # plt.title("Bottom Half")
+            # plt.imshow(bottom_half)
+            # plt.show()
+            #_______________________--
+            # cv2.line(img, topLine[0], topLine[1], (255, 255, 255), 2)
+            # cv2.line(img, middleline[0], middleline[1], (255, 255, 255), 2)
+            # cv2.line(img, bottom[0], bottom[1], (255, 255, 255), 2)
+            # Split the polygon vertically
+            split_point = box[0][1] + height//2
+            pts1 = box[np.where(box[:, 1] <= split_point)]
+            pts2 = box[np.where(box[:, 1] > split_point)]
+
+            # Draw the polygons
+            cv2.drawContours(img, [pts1], 0, 1, -1)
+            cv2.drawContours(img, [pts2], 0, 1, -1)
+
             M = cv2.moments(box)
+            print(M)
             # Calculate the centroid
             cx = int(M['m10'] / M['m00'])
             cy = int(M['m01'] / M['m00'])
-            # # Draw the centroid on the image
-            # cv2.circle(image, (cx, cy), 5, (0, 0, 255), 100)
+            # # # Draw the centroid on the image
+            # # cv2.circle(image, (cx, cy), 5, (0, 0, 255), 100)
             # Draw label at the centroid of the box
             label = "{}".format(i+1)
             font = cv2.FONT_HERSHEY_SIMPLEX
             cv2.putText(image, label, (cx, cy), font, 3, (0, 0, 255), 3)
             image = cv2.cvtColor(image, cv2.IMREAD_GRAYSCALE)
+            
         # # DEMONSTRATION Draw the rectangles on the image in the sorted order
         # for i, (x, y, w, h) in enumerate(rect_coords_grouped):
         #     # cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
@@ -178,16 +289,34 @@ class ImageInstanceOps:
         #     font = cv2.FONT_HERSHEY_SIMPLEX
         #     cv2.putText(image, label, (x, y - 5), font, 5, (0, 0, 255), 5)
         #     image = cv2.cvtColor(image, cv2.IMREAD_GRAYSCALE)
+
         plt.imshow(image)
         plt.show()
+        
         return rect_coords_grouped, image
+    
+    def sort_vertices(self, box):
+      # Get the indices that would sort the array by y value
+            sorted_y_indices = np.argsort(box[:, 1])
+            # Split the array into two lists based on the y values
+            lowest_y_list = box[sorted_y_indices[:2]].tolist()
+            highest_y_list = box[sorted_y_indices[2:]].tolist()
+            # Sort lowest_y_list by the lowest x value to the highest x value
+            sorted_lowest_y_list = sorted(lowest_y_list, key=lambda point: point[0])
+            # Sort highest_y_list by the highest x value to the lowest x value
+            sorted_highest_y_list = sorted(highest_y_list, key=lambda point: point[0], reverse=True)
+            sorted_lowest_y_list.extend(sorted_highest_y_list)
+            box = sorted_lowest_y_list.copy()
+            return(box)
     
     def gen_field_blocks():
         #naming convention
         #
         return("")
+    
     def gen_custom_labels():
         return("")
+    
     def read_omr_response(self, template, image, name, save_dir=None):
         config = self.tuning_config
         auto_align = config.alignment_params.auto_align
@@ -575,7 +704,7 @@ class ImageInstanceOps:
 
         except Exception as e:
             raise e
-
+        
     @staticmethod
     def draw_template_layout(img, template, shifted=True, draw_qvals=False, border=-1):
         img = ImageUtils.resize_util(

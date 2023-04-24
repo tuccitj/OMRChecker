@@ -285,7 +285,9 @@ class FieldBlock:
         labels_gap,
     ):
         _h, _v = (1, 0) if (direction == "vertical") else (0, 1)
-
+        print("BUBBLEVALS", bubble_values)
+        print("BUBBLEDIMS", bubble_dimensions)
+        
         values_dimension = int(
             bubbles_gap * (len(bubble_values) - 1) + bubble_dimensions[_h]
         )
