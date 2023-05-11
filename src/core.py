@@ -9,11 +9,15 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 
+import imutils
+from imutils import contours as cntx
+from src.custom.gridfinder import *
 import src.constants as constants
 from src.logger import logger
 from src.utils.image import CLAHE_HELPER, ImageUtils
 from src.utils.interaction import InteractionUtils
-from PIL import Image
+from PIL import Image, ImageDraw
+from src.custom.shapey import *
 
 class ImageInstanceOps:
     """Class to hold fine-tuned utilities for a group of images. One instance for each processing directory."""
@@ -38,7 +42,6 @@ class ImageInstanceOps:
         for pre_processor in template.pre_processors:
             in_omr = pre_processor.apply_filter(in_omr, file_path)
         return in_omr
-
     def check_poly_black(self, in_omr, polygons):
         gray = cv2.cvtColor(in_omr, cv2.COLOR_BGR2GRAY)
         thresholds = []
@@ -49,6 +52,7 @@ class ImageInstanceOps:
             _, thresh = cv2.threshold(polygon_pixels, 0, 255, cv2.THRESH_BINARY_INV+cv2.THRESH_OTSU)
             thresholds.append(thresh.mean())
         return thresholds
+    
     def generate_template(self, in_omr, template):
         field_blocks = []
         tuning_config = self.tuning_config
@@ -58,31 +62,33 @@ class ImageInstanceOps:
             tuning_config.dimensions.processing_width,
             tuning_config.dimensions.processing_height,
         )
-        polygons = self.get_polgon_vertices(in_omr)
+        shapes = self.get_shapes(in_omr)
+        # shapes.draw(in_omr, label_shapes=True, draw_label_config=DrawConfigs.UPPER_LEFT_LARGE_LABEL, display_image=True)
+        sub_shapes = shapes.detect_gridlines(src_image=in_omr, detection_method=DetectionMethod.METHOD_5, display_image=True)
+                
+        # for idx,shape in enumerate(shapes):
+        #     label = "{}".format(idx+1)
+        #     shape.draw(image=in_omr, label_shape=True, label=label,display_image=True)
+        # shapes.draw(in_omr)
+        # self.extract_subshapes(in_omr,shapes)
+        
         # self.draw_polygons(in_omr, polygons)
-        for polygon in polygons:
-            # Create a mask for the polygon
-            mask = np.zeros_like(in_omr)
-            cv2.fillPoly(mask, [polygon], (255, 255, 255))
-
-            # Apply the mask to the image
-            masked_img = cv2.bitwise_and(in_omr, mask)
-
-            plt.imshow(masked_img)
-            plt.show()
-
-            # Here we either want to split each polygon horizontally by the height and vertically by roll #
-              
-        # Determine Bubble Dimensions [width, height]
+        sub_polygons = self.get_sub_polygon_vertices(in_omr, polygons)
+        sub_squares = []
+        number_of_rows = 3
+        number_of_cols = 9
+        # sub_polygons = self.split_polygons(in_omr, polygons, number_of_rows, number_of_cols)
         x, y, w, h = polygons[0]
         width = w//9
         height = h//3
         template.bubble_dimensions = [width, height]
         template.bubbles_gap = width
         sub_rect_coords = []
+        
         for x, y, w, h in polygons:
             bubble_height = template.bubble_dimensions[1]
             sub_rect_coords.extend([(x, y + i*bubble_height, w, bubble_height) for i in range(3)])
+            
         if len(template.field_blocks_object) == len(sub_rect_coords):
             mapped_field_blocks = {}
             for (x, y, w, _), (key, field_block) in zip(sub_rect_coords, template.field_blocks_object.items()):
@@ -93,10 +99,6 @@ class ImageInstanceOps:
         else:
             print("Too many or too few rectangles detected")
             
-        # for key, coord in enumerate(rect_coords):
-        #     x,y,w,h = coord
-        #     field_block = {}
-        #     field_block[f"m{key}_w"] = "fieldType": s 
         return template
         # we need to get the orientation and the number of elements in a roll...this is all in constants.py - how to access? we also do need the template
         # so here is a design decision - if we are to generate based on field_type, the field types would  need to be provided in the template...if not,
@@ -128,76 +130,285 @@ class ImageInstanceOps:
     
         plt.imshow(image)
         plt.show()
-    # ONLY IF PREPROCESSORS HAS BEEN RUN AND ONLY IF OMR_MARKER USED TO CROP PAGE
-    def get_polgon_vertices(self, in_omr):
+    def extract_subshapes(self, in_omr, shapes):
+        image=in_omr
+        blank_image = np.zeros_like(image)
+        blank_image.fill(255)
+        blank_image = cv2.cvtColor(blank_image, cv2.COLOR_BGR2RGB)
+        # method1(image)
+        
+        for idx,shape in enumerate(shapes):
+           
+            # Extract the portion of the original image enclosed by the contour
+            mask = np.zeros_like(image)
+            cv2.drawContours(mask, [shape.contour], 0, 255, -1)
+            # Apply the mask to the original image
+            sub_image = cv2.bitwise_and(image, mask)
+            image = cv2.cvtColor(image,cv2.COLOR_BGR2RGB)
+            # plshow("si",sub_image)
+            contours = method1(sub_image)
+          
+            # contours = method4(sub_image, idx)
+            # M = cv2.moments(shape.contour)
+            # cX = int(M["m10"] / M["m00"])
+            # cY = int(M["m01"] / M["m00"])
+            # cv2.putText(blank_image, f"{idx+1}", (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 2.0, (0,255,0), 2)
+            # if len(contours) != 27:
+            #     print(f"Box {idx+1} has {len(contours)} boxes")
+           
+            for (i, cnt) in enumerate(contours):
+                color = (0, 0, 255 * (i / len(contours)))
+                cv2.drawContours(blank_image, [cnt], -1, color, 2)
+                M = cv2.moments(cnt)
+                cX = int(M["m10"] / M["m00"])
+                cY = int(M["m01"] / M["m00"])
+                cv2.putText(blank_image, f"{i+1}", (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+            # boxes = method4(sub_image)
+            # if len(boxes) != 27:
+            #     print(f"Box {idx+1} has {len(boxes)} boxes")
+            # for box in boxes:
+            #     x,y,w,h = box
+            #     cv2.rectangle(image,(x,y),(x+w,y+h),(0,255,0),2)
+            # masked_img = sub_image
+            # masked_gray = cv2.cvtColor(masked_img, cv2.COLOR_BGR2RGB)
+            # edges = cv2.Canny(masked_gray,90,150,apertureSize = 3)
+        plshow("final", blank_image)
+    
+        method1(image)
+        method2(image)
+        method3(image)
+        # Convert image back to original (RGB)
+        image = cv2.cvtColor(in_omr, cv2.COLOR_BGR2RGB)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        thresh = cv2.adaptiveThreshold(gray,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV,57,5)
+
+        # Filter out all numbers and noise to isolate only boxes
+        cnts = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+        for c in cnts:
+            area = cv2.contourArea(c)
+            if area < 1000:
+                cv2.drawContours(thresh, [c], -1, (0,0,0), -1)
+        plshow("t1", thresh1)
+
+        # Fix horizontal and vertical lines
+        vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1,5))
+        thresh1 = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, vertical_kernel, iterations=9)
+        plshow("t1", thresh1)
+        horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5,1))
+        thresh2 = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, horizontal_kernel, iterations=4)
+        plshow("t2", thresh2)
+        # Sort by top to bottom and each row by left to right
+        invert = 255 - thresh
+        cnts = cv2.findContours(invert, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+        (cnts, _) = cntx.sort_contours(cnts, method="top-to-bottom")
+        (cnts, _) = cntx.sort_contours(cnts, method="left=to-right")
+        
+
+        sudoku_rows = []
+        row = []
+        for (i, c) in enumerate(cnts, 1):
+            area = cv2.contourArea(c)
+            if area < 50000:
+                row.append(c)
+                if i+1 % 9 == 0:  
+                    (cnts, _) = cntx.sort_contours(row, method="left-to-right")
+                    sudoku_rows.append(cnts)
+                    row = []
+
+        # Iterate through each box
+        for row in sudoku_rows:
+            for c in row:
+                mask = np.zeros(image.shape, dtype=np.uint8)
+                cv2.drawContours(mask, [c], -1, (255,255,255), -1)
+                result = cv2.bitwise_and(image, mask)
+                result[mask==0] = 255
+                cv2.imshow('result', result)
+                cv2.waitKey(175)
+
+        cv2.imshow('thresh', thresh)
+        cv2.imshow('invert', invert)
+        cv2.waitKey()
+        plshow("orig", image)
+        for shape in shapes:
+            # Extract the portion of the original image enclosed by the contour
+            mask = np.zeros_like(image)
+            cv2.drawContours(mask, [shape.contour], 0, 255, -1)
+            # Apply the mask to the original image
+            sub_image = cv2.bitwise_and(image, mask)
+            masked_img = sub_image
+            masked_gray = cv2.cvtColor(masked_img, cv2.COLOR_BGR2RGB)
+            edges = cv2.Canny(masked_gray,90,150,apertureSize = 3)
+            plshow("edges1", edges)
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))      
+            edges = cv2.dilate(edges,kernel,iterations = 1)
+            plshow("dilated", edges)
+            # kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))      
+            # edges = cv2.erode(edges,kernel,iterations = 1)
+            # plshow("eroded", edges)
+            lines = cv2.HoughLines(edges,1,np.pi/180,150)
+            filter = True
+                        
+            if not lines.any():
+                print('No lines were found')
+                exit()
+
+            if filter:
+                rho_threshold = 15
+                theta_threshold = 0.1
+
+                # how many lines are similar to a given one
+                similar_lines = {i : [] for i in range(len(lines))}
+                for i in range(len(lines)):
+                    for j in range(len(lines)):
+                        if i == j:
+                            continue
+
+                        rho_i,theta_i = lines[i][0]
+                        rho_j,theta_j = lines[j][0]
+                        if abs(rho_i - rho_j) < rho_threshold and abs(theta_i - theta_j) < theta_threshold:
+                            similar_lines[i].append(j)
+
+                # ordering the INDECES of the lines by how many are similar to them
+                indices = [i for i in range(len(lines))]
+                indices.sort(key=lambda x : len(similar_lines[x]))
+
+                # line flags is the base for the filtering
+                line_flags = len(lines)*[True]
+                for i in range(len(lines) - 1):
+                    if not line_flags[indices[i]]: # if we already disregarded the ith element in the ordered list then we don't care (we will not delete anything based on it and we will never reconsider using this line again)
+                        continue
+
+                    for j in range(i + 1, len(lines)): # we are only considering those elements that had less similar line
+                        if not line_flags[indices[j]]: # and only if we have not disregarded them already
+                            continue
+
+                        rho_i,theta_i = lines[indices[i]][0]
+                        rho_j,theta_j = lines[indices[j]][0]
+                        if abs(rho_i - rho_j) < rho_threshold and abs(theta_i - theta_j) < theta_threshold:
+                            line_flags[indices[j]] = False # if it is similar and have not been disregarded yet then drop it now
+
+            print('number of Hough lines:', len(lines))
+
+            filtered_lines = []
+
+            if filter:
+                for i in range(len(lines)): # filtering
+                    if line_flags[i]:
+                        filtered_lines.append(lines[i])
+
+                print('Number of filtered lines:', len(filtered_lines))
+            else:
+                filtered_lines = lines
+                        # Draw lines on image
+            for line in filtered_lines:
+                rho, theta = line[0]
+                a = np.cos(theta)
+                b = np.sin(theta)
+                x0 = a*rho
+                y0 = b*rho
+                x1 = int(x0 + 1000*(-b))
+                y1 = int(y0 + 1000*(a))
+                x2 = int(x0 - 1000*(-b))
+                y2 = int(y0 - 1000*(a))
+                cv2.line(image, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                cv2.line(edges, (x1, y1), (x2, y2), (0, 0, 255), 2)
+            plshow("fedges", edges)
+            
+            plshow("im", image)
+            
+            # Apply adaptive thresholding to obtain a binary image
+            adaptive_thresh = cv2.adaptiveThreshold(masked_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                        cv2.THRESH_BINARY_INV, 11, 2)
+            # plshow("adaptive_thresh", adaptive_thresh)
+            
+            contours, hierarchy = cv2.findContours(adaptive_thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE) 
+            for i, contour in enumerate(contours):
+                continue
+                area = cv2.contourArea(contour)
+                if area < 100:  # filter out contours with small areas (likely noise or numbers)
+                    continue
+                # Draw the filtered contour on a separate image
+                cv2.drawContours(image, [contour], -1, (0, 255, 0), 2)
+                
+                box_img = cv2.drawContours(np.zeros_like(thresh), [contour], -1, 255, -1)
+                
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))      
+            closed = cv2.morphologyEx(adaptive_thresh, cv2.MORPH_CLOSE, kernel, iterations=3)
+            # plshow("closed", closed)
+            masked_img = cv2.cvtColor(masked_img, cv2.COLOR_BGR2RGB)
+            
+             # Find contours in the binary image and filter out noise and numbers
+            contours, hierarchy = cv2.findContours(closed, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            cv2.drawContours(image, contours, -1, (0, 255, 0), 2)
+        
+            # plshow("closed_final", masked_gray)
+        plshow("image_final", image)
+            
+# ONLY IF PREPROCESSORS HAS BEEN RUN AND ONLY IF OMR_MARKER USED TO CROP PAGE
+    def get_shapes(self, in_omr):
+        """Returns shapey.ShapeArray"""
         image = in_omr
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        orig = image.copy()
+        overlay = image.copy()
         # Apply Gaussian blur to reduce noise
         blurred = cv2.GaussianBlur(image, (5, 5), 0)
         # Convert the image to grayscale
         gray = cv2.cvtColor(blurred, cv2.COLOR_BGR2GRAY)
         # # Determine optimal threshold using Otsu's method
-        # ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        ret, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         # Apply thresholding with a threshold value of 127
-        ret, thresh = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY)   
+        # ret, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)   
         # Apply edge detection to the grayscale image
         edged = cv2.Canny(thresh, 10, 200)
         # Find contours in the edge map
         contours, hierarchy = cv2.findContours(edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        # Initialize a list to store the coordinates of the rectangles
-        boxes = []
         # Iterate through the contours and filter for rectangles
         # cv2.drawContours(image, contours, -1, (0, 255, 0), 2)
-
+        shapes = []
         for cnt in contours:
             approx = cv2.approxPolyDP(cnt, 0.01*cv2.arcLength(cnt, True), True)
-            _, _, w, h = cv2.boundingRect(approx)
+            _, _, w, h = cv2.boundingRect(approx) #we know it's a rectangle...let's ensure a certain size
             if w > 200 and h > 200 and w < 1000 and h < 1000:  # Only consider rectangles with a width and height greater than 50 pixels
-                # vertices = approx.ravel().reshape(-1, 2)
-                # # Draw the vertices on the image
-                # for vertex in vertices:
-                #     cv2.circle(image, tuple(vertex), 5, (0, 0, 255), -1)
-                # cv2.drawContours(image, [approx], 0, (0, 0, 255), 2)
-                box =  np.int0([approx[0][0], approx[1][0], approx[2][0], approx[3][0]])    
-                box = self.sort_vertices(box)  
-                box = np.int0(box) 
-                boxes.append(box)
+                # box =  np.int0([approx[0][0], approx[1][0], approx[2][0], approx[3][0]])    
+                shape = Shape(cnt)
+                shapes.append(shape)
+        shapes = ShapeArray(shapes, sort_method=ShapeSortMethods.TOP_TO_BOTTOM_LEFT_TO_RIGHT)
+        return shapes
 
-        boxes_final = self.sort_boxes(boxes,30)
-        
-        return boxes_final
-    def sort_vertices(self, box):
-      # Get the indices that would sort the array by y value
-            sorted_y_indices = np.argsort(box[:, 1])
-            # Split the array into two lists based on the y values
-            lowest_y_list = box[sorted_y_indices[:2]].tolist()
-            highest_y_list = box[sorted_y_indices[2:]].tolist()
-            # Sort lowest_y_list by the lowest x value to the highest x value
-            sorted_lowest_y_list = sorted(lowest_y_list, key=lambda point: point[0])
-            # Sort highest_y_list by the highest x value to the lowest x value
-            sorted_highest_y_list = sorted(highest_y_list, key=lambda point: point[0], reverse=True)
-            sorted_lowest_y_list.extend(sorted_highest_y_list)
-            box = sorted_lowest_y_list.copy()
-            return(box)
-    def sort_boxes(self, boxes, tolerance):
-        """If boxes are out of order, adjust tolerance. Boxes are grouped by x-axis - they won't have the same x-axis as the image is skewed. The tolerance is the range from the orig x"""
-        boxes_final = []
-        sorted_boxes = sorted(boxes, key=lambda box: box[0][0])
-        ##TODO tolerance should either be determined mathmatically w/distributions or set as a constant in config
-        tolerance = tolerance      
-        # group coordinates by x value with tolerance and sort each group by y value
-        for key, group in groupby(sorted_boxes, lambda x: round(x[0][0]/tolerance)):
-            boxes_final.extend(sorted(list(group), key=lambda x: x[0][1]))
-        return boxes_final
-    def draw_polygons(self, in_omr, polygons):
-        image = in_omr
-        for i, polygon in enumerate(polygons):
-            cv2.polylines(image, [polygon], True, (0, 0, 255), 2)
-            label = "{}".format(i+1)
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            cv2.putText(image, label, (polygon[0][0], polygon[0][1]- 5), font, 5, (0, 0, 255), 5)
-        plt.imshow(image)
-        plt.show()
+        for i,vertices in enumerate(polygons):
+            # Calculate the bounding box of the polygon
+            xmin = np.min(vertices[:, 0])
+            ymin = np.min(vertices[:, 1])
+            xmax = np.max(vertices[:, 0])
+            ymax = np.max(vertices[:, 1])
+            # Extract the subregion from the image
+            sub_img = in_omr[ymin:ymax, xmin:xmax]
+            plt.title(i+1)
+            plt.imshow(sub_img)
+            plt.show()
+            img = cv2.cvtColor(sub_img, cv2.COLOR_BGR2RGB)
+            # Convert to grayscale
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            # Apply edge detection
+            edges = cv2.Canny(gray, 50, 150, apertureSize=3)
+            plt.title("edges")
+            plt.imshow(edges)
+            plt.show()
+            # Detect horizontal lines
+            minLineLength = 100
+            maxLineGap = 10
+            lines = cv2.HoughLinesP(edges, 1, np.pi/180, 100, minLineLength, maxLineGap)
+            for line in lines:
+                x1, y1, x2, y2 = line[0]
+                if abs(y2-y1) < 5:  # Only consider lines with a small y-difference
+                    cv2.line(img, (x1, y1), (x2, y2), (0, 0, 255), 2)
+            plt.title("horizontal")
+            plt.imshow(img)
+            plt.show()
+            
     def gen_field_blocks():
         #naming convention
         #
