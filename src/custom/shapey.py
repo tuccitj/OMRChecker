@@ -8,29 +8,16 @@ import src.custom.gridfinder as gridfinder
 from src.logger import logger
 
 
-def tsimeit(method):
-
-    def timed(*args, **kw):
-        start_time = time.time()
-        result = method(*args, **kw)
-        end_time = time.time()
-        print(f"{method.__name__}: {end_time - start_time}s")
-        return result
-
-    return timed
-
-
-class DrawConfig:
-
-    def __init__(self, fontFace, fontScale, color, thickness):
-        self.fontFace = fontFace
-        self.fontScale = fontScale
-        self.color = color
-        self.thickness = thickness
-
-
 class DrawConfigs:
     """Repository of configurations for use with cv2 functions such as DrawContours(), PolyLines(), and PutText()"""
+
+    class DrawConfig:
+
+        def __init__(self, fontFace, fontScale, color, thickness):
+            self.fontFace = fontFace
+            self.fontScale = fontScale
+            self.color = color
+            self.thickness = thickness
 
     DEFAULT = DrawConfig(fontFace=cv2.FONT_HERSHEY_SIMPLEX,
                          fontScale=1,
