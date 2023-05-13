@@ -10,6 +10,8 @@
 import argparse
 from pathlib import Path
 
+import numpy
+
 from src.entry import entry_point
 from src.logger import logger
 
@@ -58,7 +60,7 @@ def parse_args():
         help="Set up OMR template layout - modify your json file and \
         run again until the template is set.",
     )
-    
+
     argparser.add_argument(
         "-dr",
         "--detectRectangles",

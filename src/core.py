@@ -1,27 +1,21 @@
-from itertools import groupby
-import math
 import os
 from collections import defaultdict
-from pprint import pprint
 from typing import Any
 
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-
-import imutils
-from imutils import contours as cntx
 from src.custom.gridfinder import *
 import src.constants as constants
 from src.logger import logger
 from src.utils.image import CLAHE_HELPER, ImageUtils
 from src.utils.interaction import InteractionUtils
-from PIL import Image, ImageDraw
 from src.custom.shapey import *
+
 
 class ImageInstanceOps:
     """Class to hold fine-tuned utilities for a group of images. One instance for each processing directory."""
-    #TODO check for flag in entry.py line 267 ifAutoGen and Type == rectangle and if so run, generate_field_blocks, then generate_custom_labels, if possible, auto gen bubble dimensions...possibly based on role #
+    # TODO check for flag in entry.py line 267 ifAutoGen and Type == rectangle and if so run, generate_field_blocks, then generate_custom_labels, if possible, auto gen bubble dimensions...possibly based on role #
     save_img_list: Any = defaultdict(list)
 
     def __init__(self, tuning_config):
@@ -37,11 +31,11 @@ class ImageInstanceOps:
             tuning_config.dimensions.processing_width,
             tuning_config.dimensions.processing_height,
         )
-
         # run pre_processors in sequence
         for pre_processor in template.pre_processors:
             in_omr = pre_processor.apply_filter(in_omr, file_path)
         return in_omr
+
     def check_poly_black(self, in_omr, polygons):
         gray = cv2.cvtColor(in_omr, cv2.COLOR_BGR2GRAY)
         thresholds = []
@@ -49,10 +43,11 @@ class ImageInstanceOps:
             polygon_mask = np.zeros_like(gray)
             cv2.fillPoly(polygon_mask, [polygon], 255)
             polygon_pixels = cv2.bitwise_and(gray, gray, mask=polygon_mask)
-            _, thresh = cv2.threshold(polygon_pixels, 0, 255, cv2.THRESH_BINARY_INV+cv2.THRESH_OTSU)
+            _, thresh = cv2.threshold(
+                polygon_pixels, 0, 255, cv2.THRESH_BINARY_INV+cv2.THRESH_OTSU)
             thresholds.append(thresh.mean())
         return thresholds
-    
+
     def generate_template(self, in_omr, template):
         field_blocks = []
         tuning_config = self.tuning_config
@@ -62,48 +57,80 @@ class ImageInstanceOps:
             tuning_config.dimensions.processing_width,
             tuning_config.dimensions.processing_height,
         )
-        shapes = self.get_shapes(in_omr)
+        field_blocks = self.get_shapes(in_omr)
+        # we have field blocks
         # shapes.draw(in_omr, label_shapes=True, draw_label_config=DrawConfigs.UPPER_LEFT_LARGE_LABEL, display_image=True)
-        sub_shapes = shapes.detect_gridlines(src_image=in_omr, detection_method=DetectionMethod.METHOD_5, display_image=True)
-                
-        # for idx,shape in enumerate(shapes):
-        #     label = "{}".format(idx+1)
-        #     shape.draw(image=in_omr, label_shape=True, label=label,display_image=True)
-        # shapes.draw(in_omr)
-        # self.extract_subshapes(in_omr,shapes)
-        
-        # self.draw_polygons(in_omr, polygons)
-        sub_polygons = self.get_sub_polygon_vertices(in_omr, polygons)
-        sub_squares = []
-        number_of_rows = 3
-        number_of_cols = 9
-        # sub_polygons = self.split_polygons(in_omr, polygons, number_of_rows, number_of_cols)
-        x, y, w, h = polygons[0]
-        width = w//9
-        height = h//3
-        template.bubble_dimensions = [width, height]
-        template.bubbles_gap = width
-        sub_rect_coords = []
-        
-        for x, y, w, h in polygons:
-            bubble_height = template.bubble_dimensions[1]
-            sub_rect_coords.extend([(x, y + i*bubble_height, w, bubble_height) for i in range(3)])
-            
-        if len(template.field_blocks_object) == len(sub_rect_coords):
-            mapped_field_blocks = {}
-            for (x, y, w, _), (key, field_block) in zip(sub_rect_coords, template.field_blocks_object.items()):
-                field_block["origin"] = [x,y]
-                field_block["bubblesGap"] = w / 9
-                # mapped_field_blocks[key] = field_block
-            # template.field_blocks_object = mapped_field_blocks
-        else:
-            print("Too many or too few rectangles detected")
-            
+        # Set detection methods
+        proc_template_method = DetectionMethod.METHOD_6
+        box_detection_method = DetectionMethod.METHOD_7
+        # Call shapes.process() method
+        start_time = time.perf_counter()
+        result = field_blocks.multi_process_all_shapes(
+            src_image=in_omr,
+            proc_template_method=proc_template_method,
+            box_detection_method=box_detection_method,
+            debug_level=0,
+        )
+        end_time = time.perf_counter()
+        execution_time = end_time - start_time
+        print("Execution time for Multiprocessing: {:.6f} seconds".format(
+            execution_time))
+        start_time = time.perf_counter()
+        result = field_blocks.process(
+            src_image=in_omr,
+            proc_template_method=proc_template_method,
+            box_detection_method=box_detection_method,
+            debug_level=0,
+        )
+        end_time = time.perf_counter()
+        execution_time = end_time - start_time
+        print("Execution time for Sequential Processing: {:.6f} seconds".format(
+            execution_time))
+        print(0/0)
+        # proc_template = shapes.detect_gridlines(src_image=in_omr, detection_method=DetectionMethod.METHOD_6, display_image=True)
+        # detection_boxes = shapes.detect_gridlines(src_image=in_omr, detection_method=DetectionMethod.METHOD_7, display_image=True)
+
+        # sub_shape_value_pattern = 0
+
+        # # for idx,shape in enumerate(shapes):
+        # #     label = "{}".format(idx+1)
+        # #     shape.draw(image=in_omr, label_shape=True, label=label,display_image=True)
+        # # shapes.draw(in_omr)
+        # # self.extract_subshapes(in_omr,shapes)
+
+        # # self.draw_polygons(in_omr, polygons)
+        # sub_polygons = self.get_sub_polygon_vertices(in_omr, polygons)
+        # sub_squares = []
+        # number_of_rows = 3
+        # number_of_cols = 9
+        # # sub_polygons = self.split_polygons(in_omr, polygons, number_of_rows, number_of_cols)
+        # x, y, w, h = polygons[0]
+        # width = w//9
+        # height = h//3
+        # template.bubble_dimensions = [width, height]
+        # template.bubbles_gap = width
+        # sub_rect_coords = []
+
+        # for x, y, w, h in polygons:
+        #     bubble_height = template.bubble_dimensions[1]
+        #     sub_rect_coords.extend([(x, y + i*bubble_height, w, bubble_height) for i in range(3)])
+
+        # if len(template.field_blocks_object) == len(sub_rect_coords):
+        #     mapped_field_blocks = {}
+        #     for (x, y, w, _), (key, field_block) in zip(sub_rect_coords, template.field_blocks_object.items()):
+        #         field_block["origin"] = [x,y]
+        #         field_block["bubblesGap"] = w / 9
+        #         # mapped_field_blocks[key] = field_block
+        #     # template.field_blocks_object = mapped_field_blocks
+        # else:
+        #     print("Too many or too few rectangles detected")
+
         return template
         # we need to get the orientation and the number of elements in a roll...this is all in constants.py - how to access? we also do need the template
         # so here is a design decision - if we are to generate based on field_type, the field types would  need to be provided in the template...if not,
         # specify in the template.json options...
 # ONLY IF PREPROCESSORS HAS BEEN RUN AND ONLY IF OMR_MARKER USED TO CROP PAGE
+
     def get_shapes(self, in_omr):
         """Returns shapey.ShapeArray"""
         image = in_omr
@@ -115,34 +142,39 @@ class ImageInstanceOps:
         # Convert the image to grayscale
         gray = cv2.cvtColor(blurred, cv2.COLOR_BGR2GRAY)
         # # Determine optimal threshold using Otsu's method
-        ret, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        ret, thresh = cv2.threshold(
+            gray, 127, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         # Apply thresholding with a threshold value of 127
-        # ret, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)   
+        # ret, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
         # Apply edge detection to the grayscale image
         edged = cv2.Canny(thresh, 10, 200)
         # Find contours in the edge map
-        contours, hierarchy = cv2.findContours(edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, hierarchy = cv2.findContours(
+            edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         # Iterate through the contours and filter for rectangles
         # cv2.drawContours(image, contours, -1, (0, 255, 0), 2)
         shapes = []
         for cnt in contours:
             approx = cv2.approxPolyDP(cnt, 0.01*cv2.arcLength(cnt, True), True)
-            _, _, w, h = cv2.boundingRect(approx) #we know it's a rectangle...let's ensure a certain size
-            if w > 200 and h > 200 and w < 1000 and h < 1000:  # Only consider rectangles with a width and height greater than 50 pixels
-                # box =  np.int0([approx[0][0], approx[1][0], approx[2][0], approx[3][0]])    
+            # we know it's a rectangle...let's ensure a certain size
+            _, _, w, h = cv2.boundingRect(approx)
+            # Only consider rectangles with a width and height greater than 50 pixels
+            if w > 200 and h > 200 and w < 1000 and h < 1000:
+                # box =  np.int0([approx[0][0], approx[1][0], approx[2][0], approx[3][0]])
                 shape = Shape(cnt)
                 shapes.append(shape)
-        shapes = ShapeArray(shapes, sort_method=ShapeSortMethods.TOP_TO_BOTTOM_LEFT_TO_RIGHT)
+        shapes = ShapeArray(
+            shapes, sort_method=ShapeSortMethods.TOP_TO_BOTTOM_LEFT_TO_RIGHT)
         return shapes
-            
+
     def gen_field_blocks():
-        #naming convention
+        # naming convention
         #
-        return("")
-    
+        return ("")
+
     def gen_custom_labels():
-        return("")
-    
+        return ("")
+
     def read_omr_response(self, template, image, name, save_dir=None):
         config = self.tuning_config
         auto_align = config.alignment_params.auto_align
@@ -207,17 +239,15 @@ class ImageInstanceOps:
                     InteractionUtils.show(
                         "morphed_vertical", morph_v, 0, 1, config=config
                     )
-
                 # InteractionUtils.show("morph1",morph,0,1,config=config)
                 # InteractionUtils.show("morphed_vertical",morph_v,0,1,config=config)
-
                 self.append_save_img(3, morph_v)
-
                 morph_thr = 60  # for Mobile images, 40 for scanned Images
-                _, morph_v = cv2.threshold(morph_v, morph_thr, 255, cv2.THRESH_BINARY)
+                _, morph_v = cv2.threshold(
+                    morph_v, morph_thr, 255, cv2.THRESH_BINARY)
                 # kernel best tuned to 5x5 now
-                morph_v = cv2.erode(morph_v, np.ones((5, 5), np.uint8), iterations=2)
-
+                morph_v = cv2.erode(morph_v, np.ones(
+                    (5, 5), np.uint8), iterations=2)
                 self.append_save_img(3, morph_v)
                 # h_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (10, 2))
                 # morph_h = cv2.morphologyEx(morph, cv2.MORPH_OPEN, h_kernel, iterations=3)
@@ -230,13 +260,10 @@ class ImageInstanceOps:
                     InteractionUtils.show(
                         "morph_thr_eroded", morph_v, 0, 1, config=config
                     )
-
                 self.append_save_img(6, morph_v)
-
                 # template relative alignment code
                 for field_block in template.field_blocks:
                     s, d = field_block.origin, field_block.dimensions
-
                     match_col, max_steps, align_stride, thk = map(
                         config.alignment_params.get,
                         [
@@ -250,33 +277,32 @@ class ImageInstanceOps:
                     while steps < max_steps:
                         left_mean = np.mean(
                             morph_v[
-                                s[1] : s[1] + d[1],
-                                s[0] + shift - thk : -thk + s[0] + shift + match_col,
+                                s[1]: s[1] + d[1],
+                                s[0] + shift - thk: -thk + s[0] + shift + match_col,
                             ]
                         )
                         right_mean = np.mean(
                             morph_v[
-                                s[1] : s[1] + d[1],
+                                s[1]: s[1] + d[1],
                                 s[0]
                                 + shift
                                 - match_col
                                 + d[0]
-                                + thk : thk
+                                + thk: thk
                                 + s[0]
                                 + shift
                                 + d[0],
                             ]
                         )
-
                         # For demonstration purposes-
-                        if(field_block.name == "int1"):
+                        if (field_block.name == "int1"):
                             ret = morph_v.copy()
                             cv2.rectangle(ret,
-                                          (s[0]+shift-thk,s[1]),
-                                          (s[0]+shift+thk+d[0],s[1]+d[1]),
+                                          (s[0]+shift-thk, s[1]),
+                                          (s[0]+shift+thk+d[0], s[1]+d[1]),
                                           constants.CLR_WHITE,
                                           3)
-                            appendSaveImg(6,ret)
+                            appendSaveImg(6, ret)
                         print(shift, left_mean, right_mean)
                         left_shift, right_shift = left_mean > 100, right_mean > 100
                         if left_shift:
@@ -292,14 +318,15 @@ class ImageInstanceOps:
                         steps += 1
 
                     field_block.shift = shift
-                    print("Aligned field_block: ",field_block.name,"Corrected Shift:",
-                      field_block.shift,", dimensions:", field_block.dimensions,
-                      "origin:", field_block.origin,'\n')
+                    print("Aligned field_block: ", field_block.name, "Corrected Shift:",
+                          field_block.shift, ", dimensions:", field_block.dimensions,
+                          "origin:", field_block.origin, '\n')
                 print("End Alignment")
 
             final_align = None
             if config.outputs.show_image_level >= 2:
-                initial_align = self.draw_template_layout(img, template, shifted=False)
+                initial_align = self.draw_template_layout(
+                    img, template, shifted=False)
                 final_align = self.draw_template_layout(
                     img, template, shifted=True, draw_qvals=True
                 )
@@ -324,7 +351,8 @@ class ImageInstanceOps:
                         x, y = (pt.x + field_block.shift, pt.y)
                         rect = [y, y + box_h, x, x + box_w]
                         q_strip_vals.append(
-                            cv2.mean(img[rect[0] : rect[1], rect[2] : rect[3]])[0]
+                            cv2.mean(
+                                img[rect[0]: rect[1], rect[2]: rect[3]])[0]
                             # detectCross(img, rect) ? 100 : 0
                         )
                     q_std_vals.append(round(np.std(q_strip_vals), 2))
@@ -347,7 +375,8 @@ class ImageInstanceOps:
             # Note: Plotting takes Significant times here --> Change Plotting args
             # to support show_image_level
             # , "Mean Intensity Histogram",plot_show=True, sort_in_plot=True)
-            global_thr, _, _ = self.get_global_threshold(all_q_vals, looseness=4)
+            global_thr, _, _ = self.get_global_threshold(
+                all_q_vals, looseness=4)
 
             logger.info(
                 f"Thresholding:\tglobal_thr: {round(global_thr, 2)} \tglobal_std_THR: {round(global_std_thresh, 2)}\t{'(Looks like a Xeroxed OMR)' if (global_thr == 255) else ''}"
@@ -465,7 +494,8 @@ class ImageInstanceOps:
 
                     if config.outputs.show_image_level >= 5:
                         if key in all_c_box_vals:
-                            q_nums[key].append(f"{key[:2]}_c{str(block_q_strip_no)}")
+                            q_nums[key].append(
+                                f"{key[:2]}_c{str(block_q_strip_no)}")
                             all_c_box_vals[key].append(
                                 all_q_strip_arrs[total_q_strip_no]
                             )
@@ -530,7 +560,7 @@ class ImageInstanceOps:
 
         except Exception as e:
             raise e
-        
+
     @staticmethod
     def draw_template_layout(img, template, shifted=True, draw_qvals=False, border=-1):
         img = ImageUtils.resize_util(
@@ -559,7 +589,8 @@ class ImageInstanceOps:
                 )
             for field_block_bubbles in field_block.traverse_bubbles:
                 for pt in field_block_bubbles:
-                    x, y = (pt.x + field_block.shift, pt.y) if shifted else (pt.x, pt.y)
+                    x, y = (pt.x + field_block.shift,
+                            pt.y) if shifted else (pt.x, pt.y)
                     cv2.rectangle(
                         final_align,
                         (int(x + box_w / 10), int(y + box_h / 10)),
@@ -585,7 +616,8 @@ class ImageInstanceOps:
                 cv2.putText(
                     final_align,
                     field_block.name,
-                    (int(s[0] + d[0] - text_in_px[0][0]), int(s[1] - text_in_px[0][1])),
+                    (int(s[0] + d[0] - text_in_px[0][0]),
+                     int(s[1] - text_in_px[0][1])),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     constants.TEXT_SIZE,
                     constants.CLR_BLACK,
@@ -677,9 +709,11 @@ class ImageInstanceOps:
 
         if plot_title:
             _, ax = plt.subplots()
-            ax.bar(range(len(q_vals_orig)), q_vals if sort_in_plot else q_vals_orig)
+            ax.bar(range(len(q_vals_orig)),
+                   q_vals if sort_in_plot else q_vals_orig)
             ax.set_title(plot_title)
-            thrline = ax.axhline(global_thr, color="green", ls="--", linewidth=5)
+            thrline = ax.axhline(global_thr, color="green",
+                                 ls="--", linewidth=5)
             thrline.set_label("Global Threshold")
             thrline = ax.axhline(thr2, color="red", ls=":", linewidth=3)
             thrline.set_label("THR2 Line")
@@ -808,7 +842,8 @@ class ImageInstanceOps:
             result = np.hstack(
                 tuple(
                     [
-                        ImageUtils.resize_util_h(img, config.dimensions.display_height)
+                        ImageUtils.resize_util_h(
+                            img, config.dimensions.display_height)
                         for img in self.save_img_list[key]
                     ]
                 )
@@ -816,11 +851,13 @@ class ImageInstanceOps:
             result = ImageUtils.resize_util(
                 result,
                 min(
-                    len(self.save_img_list[key]) * config.dimensions.display_width // 3,
+                    len(self.save_img_list[key]) *
+                    config.dimensions.display_width // 3,
                     int(config.dimensions.display_width * 2.5),
                 ),
             )
-            ImageUtils.save_img(f"{save_dir}stack/{name}_{str(key)}_stack.jpg", result)
+            ImageUtils.save_img(
+                f"{save_dir}stack/{name}_{str(key)}_stack.jpg", result)
 
     def reset_all_save_img(self):
         for i in range(self.save_image_level):

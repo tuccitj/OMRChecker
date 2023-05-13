@@ -122,7 +122,6 @@ def process_dir(
 
         setup_dirs_for_paths(paths)
         outputs_namespace = setup_outputs_for_template(paths, template)
-    
         if args["setLayout"]:
             show_template_layouts(omr_files, template, tuning_config)
         else:
@@ -170,12 +169,10 @@ def process_dir(
             evaluation_config,
         )
 
-
 def show_template_layouts(omr_files, template, tuning_config):
     for file_path in omr_files:
         file_name = file_path.name
         file_path = str(file_path)
-        print(template.bubble_dimensions)
         in_omr = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
         in_omr = template.image_instance_ops.apply_preprocessors(
             file_path, in_omr, template
