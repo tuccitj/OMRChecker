@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 import src.custom.gridfinder as gridfinder
 from src.logger import logger
 
-
+print("random change")
 class DrawConfigs:
     """Repository of configurations for use with cv2 functions such as DrawContours(), PolyLines(), and PutText()"""
 
