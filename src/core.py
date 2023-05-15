@@ -49,6 +49,15 @@ class ImageInstanceOps:
         return thresholds
 
     def generate_template(self, in_omr, template):
+        """Generates a template from the inputted images
+
+        Args:
+            in_omr (_type_): the src image
+            template (_type_): a legacy template object
+
+        Returns:
+            _type_: legacy template object
+        """
         field_blocks = []
         tuning_config = self.tuning_config
         # resize to conform to template
@@ -73,20 +82,21 @@ class ImageInstanceOps:
         )
         end_time = time.perf_counter()
         execution_time = end_time - start_time
-        print("Execution time for Multiprocessing: {:.6f} seconds".format(
-            execution_time))
-        start_time = time.perf_counter()
-        result = field_blocks.process(
-            src_image=in_omr,
-            proc_template_method=proc_template_method,
-            box_detection_method=box_detection_method,
-            debug_level=0,
-        )
-        end_time = time.perf_counter()
-        execution_time = end_time - start_time
-        print("Execution time for Sequential Processing: {:.6f} seconds".format(
-            execution_time))
+        # print("Execution time for Multiprocessing: {:.6f} seconds".format(
+        #     execution_time))
+        # start_time = time.perf_counter()
+        # result = field_blocks.process(
+        #     src_image=in_omr,
+        #     proc_template_method=proc_template_method,
+        #     box_detection_method=box_detection_method,
+        #     debug_level=0,
+        # )
+        # end_time = time.perf_counter()
+        # execution_time = end_time - start_time
+        # print("Execution tisme for Sequential Processing: {:.6f} seconds".format(
+        #     execution_time))
         print(0/0)
+        return template
         # proc_template = shapes.detect_gridlines(src_image=in_omr, detection_method=DetectionMethod.METHOD_6, display_image=True)
         # detection_boxes = shapes.detect_gridlines(src_image=in_omr, detection_method=DetectionMethod.METHOD_7, display_image=True)
 
@@ -163,8 +173,7 @@ class ImageInstanceOps:
                 # box =  np.int0([approx[0][0], approx[1][0], approx[2][0], approx[3][0]])
                 shape = Shape(cnt)
                 shapes.append(shape)
-        shapes = ShapeArray(
-            shapes, sort_method=ShapeSortMethods.TOP_TO_BOTTOM_LEFT_TO_RIGHT)
+        shapes = ShapeArray(shapes).sort_shapes(sort_method=ShapeSortMethods.TOP_TO_BOTTOM_LEFT_TO_RIGHT, tolerance=30)
         return shapes
 
     def gen_field_blocks():

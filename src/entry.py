@@ -149,8 +149,6 @@ def process_dir(
                 outputs_namespace,
             )
             
-       
-
     elif not subdirs:
         # Each subdirectory should have images or should be non-leaf
         logger.info(
@@ -177,9 +175,13 @@ def show_template_layouts(omr_files, template, tuning_config):
         in_omr = template.image_instance_ops.apply_preprocessors(
             file_path, in_omr, template
         )
+        #preprocessing is applied in the template.
         print("Before generate_template:", template.bubble_dimensions)
+        message = len(template.field_blocks_object)
+        logger.info("🚀 ~ file: entry.py:183 ~ message:", message)
         #TODO image_instance_ops.draw_rectangle_layout
         template = template.image_instance_ops.generate_template(in_omr, template)
+        # currenty 180...which is 4 cols of 15. 3 rows each. So we can validate to be sure there are 180 total blocks.
         pprint(template.field_blocks_object, indent=4)
         template.finish_setup()
         print("After generate_template:", template.bubble_dimensions)

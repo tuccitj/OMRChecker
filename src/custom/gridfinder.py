@@ -2,7 +2,7 @@ import itertools
 import cv2
 from imutils import contours as cntx
 import numpy as np
-from src.custom.shapey import Shape, ShapeArray, plshow
+from src.custom.shapey import DrawConfigs, Shape, ShapeArray, plshow
 from itertools import chain
 
 
@@ -357,7 +357,6 @@ def method5(image, idx="", debug_level=0):
     # Load image, grayscale, and adaptive threshold
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     blank_image = np.zeros_like(image)
-
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     # blurred = cv2.GaussianBlur(gray, (5, 5), 100,)
     # Define kernel size and create kernel
@@ -805,11 +804,12 @@ def method6(src_image, idx="", debug_level=0):
     norm = norm[0] if len(norm) == 2 else norm[1]
     inv = inv[0] if len(inv) == 2 else inv[1]
 
-
+# for detection boxes
 def method7(src_image, idx="", debug_level=0):
     if debug_level == 3:
-        if idx + 1 in [46]:
+        if idx + 1 in [46,48, 49, 50]:
             debug_level = 1
+    
     img = cv2.cvtColor(src_image, cv2.COLOR_BGR2RGB)
     gray = src_image.copy()
     # Apply Gaussian blur to reduce noise
@@ -978,13 +978,24 @@ def method7(src_image, idx="", debug_level=0):
 
     shapes = []
     contours = []
-
-    # cnts = list(reversed(cnts))
-
+    # So at this point, there should be 27 contours...double check the logic removing the largest contour
+    # So we initialize each as a shape which gets the vertices based on the approximation of the contour.
+    # We then sort the vertices so the top left is in the top left
+    # We then generate a label position to be the top left 
+    # once we have the vertices, we sort position based on them
+    # the label position is
     for idx, cnt in enumerate(cnts):
         try:
-            cv2.drawContours(src_image, [cnt], -1, (0, 255, 0), 5)
+            # cv2.drawContours(src_image, [cnt], -1, (0, 255, 0), 5)
             shape = Shape(cnt)
+            shape.draw(
+                        src_image,
+                        label_shape=True,
+                        label=str(idx),
+                        draw_label_config=DrawConfigs.DEFAULT_LABEL,
+                        draw_line_config=DrawConfigs.DEFAULT_LINE,
+                        display_image=False,
+                    )
             shapes.append(shape)
             contours.append(cnt)
 
@@ -996,26 +1007,8 @@ def method7(src_image, idx="", debug_level=0):
             print("errorrring")
             ## TODO Log Errors
             continue
-
-    # shapes = []
-    # contours = []
-
-    # for idx, cnt in enumerate(cnts):
-    #     try:
-    #         cv2.drawContours(image, [cnt], -1, (0,255,0), 5)
-    #         shape = Shape(cnt)
-    #         shapes.append(shape)
-    #         contours.append(cnt)
-
-    #     except:
-    #         cv2.drawContours(image, [cnt], -1, (0,255,0), 5)
-    #         plshow("lines_combined", lines_combined)
-    #         plshow("lines_eroded", lines_eroded)
-    #         plshow("exception", image)
-    #         print("errorrring")
-    #         ## TODO Log Errors
-    #         continue
     if debug_level == 1 or debug_level == 2:
+        
         plshow("Final", src_image)
 
     return shapes, contours
@@ -1024,7 +1017,6 @@ def method7(src_image, idx="", debug_level=0):
 def grouper(iterable, n):
     args = [iter(iterable)] * n
     return itertools.zip_longest(*args, fillvalue=None)
-
 
 ###code to do connected component visualisation
 def imshow_components(labels):

@@ -1,0 +1,145 @@
+def process_shape_wrapper(args):
+    # Unpack the arguments tuple and pass the values to process_shape()
+    return self.process_shape(*args)
+
+with multiprocessing.Pool() as pool:
+    # Use imap() with a wrapper function that accepts a tuple of arguments
+    results_iterator = pool.imap(process_shape_wrapper, shape_args)
+  
+    # Iterate over the results iterator as results become available
+    for shape in results_iterator:
+        for detection_box in shape.detection_boxes:
+            if detection_box.isMarked:
+                detection_box.draw(
+                    src_image,
+                    label_shape=True,
+                    label=str(detection_box.isMarked),
+                    draw_label_config=DrawConfigs.DEFAULT_LABEL,
+                    draw_line_config=DrawConfigs.DEFAULT_LINE,
+                    display_image=False,
+                )
+                
+
+                  # for shape in self.shapes:
+        #     for detection_box in shape.detection_boxes:
+        #         print(detection_box.value) 
+        # print(0/0)
+        # for shape in self.shapes:
+        #     if len(shape.detection_boxes) == 27:
+        #         fun_array = []
+        #         bloobs = np.array([box.isMarked for box in shape.detection_boxes])
+        #         boxes = np.array(shape.detection_boxes)
+        #         boxes = boxes.reshape(3, 9)
+        #         fun_array.append(bloobs)
+        #         # Here we split the boxes into vertical and horizontal rolls as defined in constants.py
+        #         horizontal_rolls = boxes[:, :8]
+        #         vertical_roll = boxes[:, 8]
+        #         roll_values = []
+        #         # Map the horizontal rolls
+        #         for idx, (roll_name, roll_info) in enumerate(rolls.items()):
+        #             if roll_info['direction'] == 'horizontal':
+        #                 # roll_values[roll_name] = [roll_info['bubbleValues'][i] for i, box in enumerate(horizontal_rolls[idx]) if box.isMarked]
+        #                 for i, box in enumerate(horizontal_rolls[idx]):
+        #                     if box.isMarked:
+        #                         value = roll_info["bubbleValues"][i]
+        #                         box.value = value
+        #                     else:
+        #                         box.value = ""
+        #                 roll_values.append([
+        #                     roll_info['bubbleValues'][i]
+        #                     if box.isMarked else ''
+        #                     for i, box in enumerate(horizontal_rolls[idx])
+        #                 ])
+        #         for idx, roll in enumerate(horizontal_rolls):
+        #             for box in roll:
+        #                 print(box.value)
+        #         # fun_array.append(roll_values)
+        #         # print(fun_array)
+        # print(0/0)
+                
+                # # Map the vertical roll
+                # roll_values['vertical'] = [
+                #     roll_info['bubbleValues'][i] if box.isMarked else ''
+                #     for i, box in enumerate(vertical_roll)
+                
+                # roll_values['vertical'] = [rolls['vertical']['bubbleValues'][i] for i, box in enumerate(vertical_roll) if box.isMarked]
+
+
+
+
+                [
+    detection_box.draw(
+        src_image,
+        label_shape=True,
+        label=str(detection_box.value),
+        draw_label_config=DrawConfigs.DEFAULT_LABEL,
+        draw_line_config=DrawConfigs.DEFAULT_LINE,
+        display_image=False
+    )
+    for shape in self.shapes if len(shape.detection_boxes) == 27
+    for idx, detection_box in enumerate(shape.detection_boxes)
+    if (detection_box.isMarked and detection_box.value == shape.detection_boxes.labels[idx])
+    or (not detection_box.isMarked and detection_box.value == "")
+]
+
+
+# def process_detection_boxes(self):
+    #     # Submit each detection box to the process pool as a separate task
+    #     tasks = []
+    #     for idx, detection_box in enumerate(self.detection_boxes):
+    #         task = pool.submit_task(detection_box._meetsBlackThreshold, (self.processing_mask, 0))
+    #         tasks.append(task)
+
+    #     # Wait for all tasks to complete and retrieve the results
+    #     for idx, task in enumerate(tasks):
+    #         self.detection_boxes[idx].isMarked = pool.get_task_result(task)
+    # for idx, detection_box in enumerate(self.detection_boxes):
+    #     detection_box.isMarked = detection_box._meetsBlackThreshold(sub_image=self.processing_mask, debug_level=0)
+
+
+
+    for shape in results:
+            if len(shape.detection_boxes) == 27:
+                shape.detection_boxes[0] = shape.detection_boxes
+                boxes = np.array(shape.detection_boxes)
+                pprint(boxes, indent=4, sort_dicts=False)
+                boxes = boxes.reshape(3, 9)
+                horizontal_rolls = boxes[:, :8]
+                # Get the vertical roll
+                vertical_roll = boxes[:, 8]
+                roll_values = {}
+               # Map the horizontal rolls
+                for idx, (roll_name, roll_info) in enumerate(rolls.items()):    
+                    if roll_info['direction'] == 'horizontal':
+                        # roll_values[roll_name] = [roll_info['bubbleValues'][i] for i, box in enumerate(horizontal_rolls[idx]) if box.isMarked]
+                        roll_values[roll_name]=[roll_info['bubbleValues'][i] if box.isMarked else '' for i, box in enumerate(horizontal_rolls[idx])]
+
+                # Map the vertical roll
+                roll_values['vertical'] = [roll_info['bubbleValues'][i] if box.isMarked else '' for i, box in enumerate(vertical_roll)]
+                # roll_values['vertical'] = [rolls['vertical']['bubbleValues'][i] for i, box in enumerate(vertical_roll) if box.isMarked]
+                all_roll_values.append(roll_values)
+        pprint(all_roll_values[0], indent=4, sort_dicts=False)
+
+
+          # Map the horizontal rolls
+                for idx, (roll_name, roll_info) in enumerate(rolls.items()):
+                    if roll_info['direction'] == 'horizontal':
+                        roll_values[roll_name] = [
+                            roll_info['bubbleValues'][i]
+                            for i, val in enumerate(horizontal_rolls[idx]) if val
+                        ]
+                # Map the vertical roll
+                roll_values['vertical'] = [
+                    rolls['vertical']['bubbleValues'][i]
+                    for i, val in enumerate(vertical_roll) if val
+                ]
+
+                pprint(roll_values, indent=4, sort_dicts=False)
+                # marked = np.array(
+                #     [box.isMarked for box in shape.detection_boxes], dtype=bool)
+                marked = marked.reshape(3, 9)
+                # Get the horizontal rolls
+                horizontal_rolls = marked[:, :8]
+                # Get the vertical roll
+                vertical_roll = marked[:, 8]
+                roll_values = {}

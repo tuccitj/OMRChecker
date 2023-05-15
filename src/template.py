@@ -46,7 +46,13 @@ class Template:
                 "autoGenerateTemplate"
             ],
         )
+        # logger.info("🚀 ~ file: template.py:27 ~ custom_labels_object:", custom_labels_object)
+        logger.info(f"🚀 ~ file: template.py:29 ~ output_columns_array length: {len(output_columns_array)}", output_columns_array)
+        logger.info("🚀 ~ file: template.py:30 ~ pre_processors_object:", pre_processors_object)
+        
+        #? We take this route in order to exit the template initialiation. Really, all I need is the preprocessors for cropping
         if self.autoGenerateTemplate:
+            # is doing nothing, more immediately 
             self.parse_output_columns(output_columns_array)
             self.setup_pre_processors(pre_processors_object, template_path.parent)
             self.field_blocks_object = field_blocks_object

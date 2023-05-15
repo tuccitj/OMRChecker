@@ -1,4 +1,6 @@
+import itertools
 import multiprocessing
+from pprint import pprint
 import time
 from itertools import groupby
 import cv2
@@ -7,7 +9,7 @@ from matplotlib import pyplot as plt
 import src.custom.gridfinder as gridfinder
 from src.logger import logger
 
-print("random change")
+
 class DrawConfigs:
     """Repository of configurations for use with cv2 functions such as DrawContours(), PolyLines(), and PutText()"""
 
@@ -63,7 +65,7 @@ class ShapeSortMethods:
     TOP_TO_BOTTOM_LEFT_TO_RIGHT = 2
 
 
-class Shape:
+class Shape():
     """
     Smallest unit for processing. A shape is usually within a ShapeArray
     which represents a Field Block in the template.
@@ -79,9 +81,10 @@ class Shape:
         self.vertices = self._get_vertices(contour, sort=True)
         self.draw_line_config = draw_line_config
         self.draw_label_config = draw_label_config
+        self.detection_boxes = None  # This is currently a shape array... potentially inherit functionality from
+        self.processing_mask = None  # used
         self.isMarked = False
-        self.detection_boxes = None
-        self.processing_mask = None
+        self.value = None  # Only in DetectionBox context
 
     def draw(
         self,
@@ -107,7 +110,7 @@ class Shape:
             draw_line_config.thickness,
         )
         # identify the label position
-        self.label_position = (self.vertices[0][0], self.vertices[0][1] - 5)
+        # self.label_position = (self.vertices[0][0], self.vertices[0][1])
         if label_shape:
             self.label(image, label, self.draw_label_config)
         if display_image:
@@ -129,43 +132,26 @@ class Shape:
             raise ValueError("No draw configuration provided")
         return image
 
-    # def multi_process_detection_boxes(self):
-    #     with multiprocessing.Pool(5) as p:
-    #         results = p.starmap(self._process_detection_box, enumerate(self.detection_boxes))
-    #         p.close()
-    #         p.join()
-
-    #         for idx, detection_box in enumerate(self.detection_boxes):
-    #             detection_box.isMarked = results[idx]
-
-    # def _process_detection_box(self, idx, detection_box):
-    #     return detection_box._meetsBlackThreshold(sub_image=self.processing_mask, debug_level=0)
-
     def process_detection_boxes(self):
-        if self.detection_boxes:
-            for idx, detection_box in enumerate(self.detection_boxes):
-                detection_box.isMarked = detection_box._meetsBlackThreshold(
-                    sub_image=self.processing_mask, debug_level=0)
+        for idx, detection_box in enumerate(self.detection_boxes):
+            detection_box.isMarked = detection_box._meetsBlackThreshold(
+                sub_image=self.processing_mask, debug_level=0)
 
-    # def process_detection_boxes(self):
-    #     # Submit each detection box to the process pool as a separate task
-    #     tasks = []
-    #     for idx, detection_box in enumerate(self.detection_boxes):
-    #         task = pool.submit_task(detection_box._meetsBlackThreshold, (self.processing_mask, 0))
-    #         tasks.append(task)
-
-    #     # Wait for all tasks to complete and retrieve the results
-    #     for idx, task in enumerate(tasks):
-    #         self.detection_boxes[idx].isMarked = pool.get_task_result(task)
-    # for idx, detection_box in enumerate(self.detection_boxes):
-    #     detection_box.isMarked = detection_box._meetsBlackThreshold(sub_image=self.processing_mask, debug_level=0)
     def _get_vertices(self, contour, sort):
+        
         cnt = contour
+        # Calculate centroid coordinates
+        M = cv2.moments(cnt)
+        cx = int(M['m10'] / M['m00'])
+        cy = int(M['m01'] / M['m00'])
+        # Set label position to centroid coordinates
+        self.label_position = (cx-10, cy)
         approx = cv2.approxPolyDP(cnt, 0.01 * cv2.arcLength(cnt, True), True)
         vertices = np.int0(
             [approx[0][0], approx[1][0], approx[2][0], approx[3][0]])
         if sort:
             vertices = self._sort_vertices(vertices)
+       
         return vertices
 
     def _sort_vertices(self, box):
@@ -226,13 +212,17 @@ class Shape:
         return black_ratio > threshold
 
 
-class ShapeArray:
+class ShapeArray():
     """Array of Shapes"""
 
-    def __init__(self, shapes, sort_method=None):
+    def __init__(self, shapes):
         self.shapes = shapes
-        if sort_method:
-            self.shapes = self._sort_shapes(shapes, sort_method)
+        self.labels = [["p", "b", "k", "q", "n", "r", "0-0", "-0", "X"],
+                       ["a", "b", "c", "d", "e", "f", "g", "h", "+"],
+                       ["1", "2", "3", "4", "5", "6", "7", "8", "="]]
+        self.labels = list(itertools.chain(*self.labels))
+        # if sort_method:
+        #     self.shapes = self._sort_shapes(sort_method)
 
     def __getitem__(self, index):
         return self.shapes[index]
@@ -240,17 +230,22 @@ class ShapeArray:
     def __len__(self):
         return len(self.shapes)
 
-    def _sort_shapes(self, shapes, sort_method, tolerance=30):
+    def sort_shapes(self, sort_method, tolerance=30):
+        return ShapeArray(self._sort_shapes(sort_method, tolerance))
+
+    #? Should this be a public method so we can sort the ShapeArray on demand? Possibly helpful for multiprocessing
+    #? Additionally, we need to assign an ID to each shape once they're in the proper order...I'd like to avoid another iteration
+    def _sort_shapes(self, sort_method, tolerance=30):
         """Method for sorting shapes in a FieldBlock
 
         Args:
-            shapes (_type_): _description_
             sort_method (_type_): Sort method to sort by
             tolerance (int, optional): _description_. Defaults to 30.
 
         Returns:
             _type_: _description_
         """
+        shapes = self.shapes
         shapes_final = []
         if sort_method == ShapeSortMethods.TOP_TO_BOTTOM_LEFT_TO_RIGHT:
             sorted_shapes = sorted(shapes,
@@ -266,7 +261,6 @@ class ShapeArray:
                            key=lambda shape: shape.vertices[0][1]))
         elif sort_method == ShapeSortMethods.LEFT_TO_RIGHT_TOP_TO_BOTTOM:
             # TODO tolerance should be a parameter...should be able to set defaults somewhere
-            tolerance = 50
             sorted_shapes = sorted(shapes,
                                    key=lambda shape: shape.vertices[0][1])
             # TODO tolerance should either be determined mathmatically w/distributions or set as a constant in config
@@ -277,6 +271,7 @@ class ShapeArray:
                 shapes_final.extend(
                     sorted(list(group),
                            key=lambda shape: shape.vertices[0][0]))
+        # shapes_final=ShapeArray(shapes_final)
         return shapes_final
 
     def draw(
@@ -308,33 +303,100 @@ class ShapeArray:
 
     def multi_process_all_shapes(self, src_image, proc_template_method,
                                  box_detection_method, debug_level):
+        template_config = None
+        blank_image = np.zeros_like(src_image)
+        blank_image.fill(255)
+        blank_image = cv2.cvtColor(blank_image, cv2.COLOR_BGR2RGB)
         # Generate a list of (index, shape) tuples to be processed by `process_shape()`.
-        shape_args = [(
-            idx,
-            shape,
-            src_image,
-            proc_template_method,
-            box_detection_method,
-            debug_level,
-        ) for idx, shape in enumerate(self.shapes)]
-
+        idx_to_debug = [] # indexes of shapes to enable debugging for
+        shape_args = [] # list to store arguments for each shape
+        for idx, shape in enumerate(self.shapes):
+            if idx in idx_to_debug:
+                # enable debugging for this shape
+                debug_level = 1
+            else:
+                # disable debugging for this shape
+                debug_level = debug_level
+            shape_arg = (idx, shape, src_image, proc_template_method, box_detection_method, debug_level)
+            shape_args.append(shape_arg)
+        run = 0
+        if run == 1:
+            shape_args = [(
+                idx,
+                shape,
+                src_image,
+                proc_template_method,
+                box_detection_method,
+                debug_level
+            ) for idx, shape in enumerate(self.shapes)]
         # Use `map_async()` to execute `process_shape()` on each tuple in parallel.
+        # the 'with' statement automatically calls the close() and join() methods on the pool
         with multiprocessing.Pool() as pool:
-            results = pool.starmap_async(self.process_shape, shape_args).get()
-        # Close the pool to release its resources.
-        pool.join()
-        pool.close()
-        for shape in results:
-            for detection_box in shape.detection_boxes:
-                if detection_box.isMarked:
+            self.shapes = pool.starmap_async(self.process_shape,
+                                             shape_args).get()
+        # check that detection box is expected value (27 for testing purposes)
+        rolls = {
+            "piece": {
+                "bubbleValues":
+                ["p", "b", "k", "q", "n", "r", "0-0", "-0",
+                 "X"],  # placeholder for empty list
+                "direction": "horizontal",
+            },
+            "pos_x": {
+                "bubbleValues": ["a", "b", "c", "d", "e", "f", "g", "h", "+"],
+                "direction": "horizontal",
+            },
+            "pos_y": {
+                "bubbleValues": ["1", "2", "3", "4", "5", "6", "7", "8", "="],
+                "direction": "horizontal",
+            }
+        }
+
+        for shape in self.shapes:
+            if len(shape.detection_boxes) == 27:
+                for idx, detection_box in enumerate(shape.detection_boxes):
+                    if detection_box.isMarked:
+                        detection_box.value = shape.detection_boxes.labels[idx]
+                    else:
+                        detection_box.value = ""
                     detection_box.draw(
-                        src_image,
+                        blank_image,
                         label_shape=True,
-                        label=str(detection_box.isMarked),
+                        label=str(idx),
                         draw_label_config=DrawConfigs.DEFAULT_LABEL,
                         draw_line_config=DrawConfigs.DEFAULT_LINE,
-                        display_image=False,
-                    )
+                        display_image=False)
+
+        # for shape in self.shapes:
+        #     if len(shape.detection_boxes) == 27:
+        #         for idx, detection_box in enumerate(shape.detection_boxes):
+        #             detection_box.draw(
+        #                 src_image,
+        #                 label_shape=True,
+        #                 label=str(idx),
+        #                 draw_label_config=DrawConfigs.DEFAULT_LABEL,
+        #                 draw_line_config=DrawConfigs.DEFAULT_LINE,
+        #                 display_image=False)
+        # for shape in self.shapes:
+        #     if len(shape.detection_boxes) == 27:
+        #         for detection_box in shape.detection_boxes:
+        #             if detection_box.isMarked:
+        #                 detection_box.draw(
+        #                     src_image,
+        #                     label_shape=True,
+        #                     label=str(detection_box.value),
+        #                     draw_label_config=DrawConfigs.DEFAULT_LABEL,
+        #                     draw_line_config=DrawConfigs.DEFAULT_LINE,
+        #                     display_image=False
+        #                 )
+        # TODO: At this point, we have all detection blocks and isMarked.
+        # Now we need to group the detection boxes based on an inputted
+        # template.json. Each group should have a corresponding FieldType
+        # with the associated values. In our case, we know that each group
+        # will have the same FieldType though that can't be guaranteed for
+        # every case. Therefore, the only way to know is to define each in
+        # the template.json.
+        plshow("img", blank_image)
         return src_image
         # Store the results in each shape object
         # for idx, shape in enumerate(self.shapes):
@@ -361,28 +423,35 @@ class ShapeArray:
             idx,
             detection_method=proc_template_method,
             display_image=False,
-            debug_level=debug_level,
-            show_image=False,
-        )
+            debug_level=debug_level)
+        
         shape.detection_boxes = self._get_detection_boxes(
             sub_image,
             idx,
             detection_method=box_detection_method,
             display_image=False,
-            debug_level=debug_level,
-        )
+            debug_level=3
+            )
+        
+        shape.detection_boxes = shape.detection_boxes
+        shape.detection_boxes = shape.detection_boxes.sort_shapes(
+            sort_method=ShapeSortMethods.LEFT_TO_RIGHT_TOP_TO_BOTTOM,
+            tolerance=50)
+        # shape.isValidated = self._validate(template_config)
+
         # proc_img is flattened answer template. not filled in boxes marked boxes on source img
-        if proc_template:
-            proc_sub_img = proc_template.draw(
-                proc_img,
-                draw_line_config=DrawConfigs.DRAW_ON_BLANK,
-                display_image=False)
+        proc_sub_img = proc_template.draw(
+            proc_img,
+            draw_line_config=DrawConfigs.DRAW_ON_BLANK,
+            display_image=False)
         # if we invert proc_img, the marked boxes are now the filled boxes
-        proc_sub_img = 255 - proc_img
-        shape.processing_mask = proc_sub_img
+        inverted_proc_sub_img = 255 - proc_sub_img
+        shape.processing_mask = inverted_proc_sub_img
         shape.process_detection_boxes()
+        isMarked = shape.isMarked
         return shape
 
+    # ! Deprecated, use process_shape
     def process(
         self,
         src_image,
@@ -409,14 +478,13 @@ class ShapeArray:
                 detection_method=proc_template_method,
                 display_image=False,
                 debug_level=debug_level,
-                show_image=False,
             )
             shape.detection_boxes = self._get_detection_boxes(
                 sub_image,
                 idx,
                 detection_method=box_detection_method,
                 display_image=False,
-                debug_level=debug_level,
+                debug_level=3,
             )
             # proc_img is flattened answer template. not filled in boxes marked boxes on source img
             proc_sub_img = proc_template.draw(
@@ -429,16 +497,15 @@ class ShapeArray:
             shape.processing_mask = proc_sub_img
             shape.process_detection_boxes()
             if shape.detection_boxes:
-                for detection_box in shape.detection_boxes:
-                    if detection_box.isMarked:
-                        detection_box.draw(
-                            src_image,
-                            label_shape=True,
-                            label=str(detection_box.isMarked),
-                            draw_label_config=DrawConfigs.DEFAULT_LABEL,
-                            draw_line_config=DrawConfigs.DEFAULT_LINE,
-                            display_image=False,
-                        )
+                for idx,detection_box in enumerate(shape.detection_boxes):
+                    detection_box.draw(
+                        src_image,
+                        label_shape=True,
+                        label=str(idx),
+                        draw_label_config=DrawConfigs.DEFAULT_LABEL,
+                        draw_line_config=DrawConfigs.DEFAULT_LINE,
+                        display_image=False,
+                    )
 
         return src_image
         # plshow("Final", src_image)
@@ -468,16 +535,16 @@ class ShapeArray:
         sub_image,
         idx,
         detection_method=DetectionMethod.METHOD_6,
-        display_image=False,
         debug_level=0,
-        show_image=False,
+        display_image=False,
     ):
+        proc_template = None
         if detection_method == DetectionMethod.METHOD_6:
             # We need to get the proc_template and for checking subimages
             proc_template, pt_contours = gridfinder.method6(
                 src_image=sub_image, idx=idx, debug_level=debug_level)
             proc_template = ShapeArray(proc_template)
-            if show_image:
+            if display_image and proc_template is not None:
                 proc_template.draw(
                     image=sub_image,
                     label_shapes=False,
@@ -496,21 +563,16 @@ class ShapeArray:
         sub_image,
         idx,
         detection_method=DetectionMethod.METHOD_7,
-        display_image=False,
         debug_level=0,
-        show_image=False,
+        display_image=False,
     ):
-        detection_boxes = None
         if detection_method == DetectionMethod.METHOD_7:
             detection_boxes, db_contours = gridfinder.method7(sub_image,
                                                               idx,
-                                                              debug_level=0)
+                                                              debug_level)
             # this is convenient but should sorting happen earlier?
-            detection_boxes = ShapeArray(
-                detection_boxes,
-                sort_method=ShapeSortMethods.LEFT_TO_RIGHT_TOP_TO_BOTTOM,
-            )
-        if show_image and detection_boxes is not None:
+            detection_boxes = ShapeArray(detection_boxes)
+        if display_image:
             # Draws detection box on a blank sub_image - not helpful yet
             detection_boxes.draw(
                 sub_image,
@@ -521,11 +583,7 @@ class ShapeArray:
             )
             plshow(f"_get_detection_boxes({idx}, {detection_method})",
                    sub_image)
-
         return detection_boxes
-
-    # def _isMarked(self, proc_sub_img, detection_boxes):
-    #     for detection_box in detection_boxes:
 
     def get_sub_shapes(self):
         for idx, shape in enumerate(self.shapes):
