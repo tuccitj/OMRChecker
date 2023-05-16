@@ -12,7 +12,6 @@ from src.utils.image import CLAHE_HELPER, ImageUtils
 from src.utils.interaction import InteractionUtils
 from src.custom.shapey import *
 
-
 class ImageInstanceOps:
     """Class to hold fine-tuned utilities for a group of images. One instance for each processing directory."""
     # TODO check for flag in entry.py line 267 ifAutoGen and Type == rectangle and if so run, generate_field_blocks, then generate_custom_labels, if possible, auto gen bubble dimensions...possibly based on role #
@@ -43,8 +42,8 @@ class ImageInstanceOps:
             polygon_mask = np.zeros_like(gray)
             cv2.fillPoly(polygon_mask, [polygon], 255)
             polygon_pixels = cv2.bitwise_and(gray, gray, mask=polygon_mask)
-            _, thresh = cv2.threshold(
-                polygon_pixels, 0, 255, cv2.THRESH_BINARY_INV+cv2.THRESH_OTSU)
+            _, thresh = cv2.threshold(polygon_pixels, 0, 255,
+                                      cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
             thresholds.append(thresh.mean())
         return thresholds
 
@@ -66,36 +65,42 @@ class ImageInstanceOps:
             tuning_config.dimensions.processing_width,
             tuning_config.dimensions.processing_height,
         )
+
         field_blocks = self.get_shapes(in_omr)
+        # boo = in_omr.copy()
+        # plshow("hi", field_blocks.draw(boo, label_shapes=True, draw_label_config=DrawConfigs.LARGE_FONT_IN_WHITE, draw_line_config=DrawConfigs.DEFAULT_LINE))
         # we have field blocks
         # shapes.draw(in_omr, label_shapes=True, draw_label_config=DrawConfigs.UPPER_LEFT_LARGE_LABEL, display_image=True)
         # Set detection methods
         proc_template_method = DetectionMethod.METHOD_6
         box_detection_method = DetectionMethod.METHOD_7
-        # Call shapes.process() method
-        start_time = time.perf_counter()
-        result = field_blocks.multi_process_all_shapes(
-            src_image=in_omr,
-            proc_template_method=proc_template_method,
-            box_detection_method=box_detection_method,
-            debug_level=0,
-        )
-        end_time = time.perf_counter()
-        execution_time = end_time - start_time
-        # print("Execution time for Multiprocessing: {:.6f} seconds".format(
-        #     execution_time))
-        # start_time = time.perf_counter()
-        # result = field_blocks.process(
-        #     src_image=in_omr,
-        #     proc_template_method=proc_template_method,
-        #     box_detection_method=box_detection_method,
-        #     debug_level=0,
-        # )
-        # end_time = time.perf_counter()
-        # execution_time = end_time - start_time
-        # print("Execution tisme for Sequential Processing: {:.6f} seconds".format(
-        #     execution_time))
-        print(0/0)
+        multi = True
+        if multi:
+            # Call shapes.process() method
+            start_time = time.perf_counter()
+            result = field_blocks.multi_process_all_shapes(
+                src_image=in_omr,
+                proc_template_method=proc_template_method,
+                box_detection_method=box_detection_method,
+                debug_level=0,
+            )
+            end_time = time.perf_counter()
+            execution_time = end_time - start_time
+            print("Execution time for Multiprocessing: {:.6f} seconds".format(
+                execution_time))
+        else:
+            start_time = time.perf_counter()
+            result = field_blocks.process(
+                src_image=in_omr,
+                proc_template_method=proc_template_method,
+                box_detection_method=box_detection_method,
+                debug_level=0,
+            )
+            end_time = time.perf_counter()
+            execution_time = end_time - start_time
+            print("Execution tisme for Sequential Processing: {:.6f} seconds".
+                  format(execution_time))
+        print(0 / 0)
         return template
         # proc_template = shapes.detect_gridlines(src_image=in_omr, detection_method=DetectionMethod.METHOD_6, display_image=True)
         # detection_boxes = shapes.detect_gridlines(src_image=in_omr, detection_method=DetectionMethod.METHOD_7, display_image=True)
@@ -139,6 +144,8 @@ class ImageInstanceOps:
         # we need to get the orientation and the number of elements in a roll...this is all in constants.py - how to access? we also do need the template
         # so here is a design decision - if we are to generate based on field_type, the field types would  need to be provided in the template...if not,
         # specify in the template.json options...
+
+
 # ONLY IF PREPROCESSORS HAS BEEN RUN AND ONLY IF OMR_MARKER USED TO CROP PAGE
 
     def get_shapes(self, in_omr):
@@ -152,20 +159,21 @@ class ImageInstanceOps:
         # Convert the image to grayscale
         gray = cv2.cvtColor(blurred, cv2.COLOR_BGR2GRAY)
         # # Determine optimal threshold using Otsu's method
-        ret, thresh = cv2.threshold(
-            gray, 127, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        ret, thresh = cv2.threshold(gray, 127, 255,
+                                    cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         # Apply thresholding with a threshold value of 127
         # ret, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
         # Apply edge detection to the grayscale image
         edged = cv2.Canny(thresh, 10, 200)
         # Find contours in the edge map
-        contours, hierarchy = cv2.findContours(
-            edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, hierarchy = cv2.findContours(edged, cv2.RETR_EXTERNAL,
+                                               cv2.CHAIN_APPROX_SIMPLE)
         # Iterate through the contours and filter for rectangles
         # cv2.drawContours(image, contours, -1, (0, 255, 0), 2)
         shapes = []
         for cnt in contours:
-            approx = cv2.approxPolyDP(cnt, 0.01*cv2.arcLength(cnt, True), True)
+            approx = cv2.approxPolyDP(cnt, 0.01 * cv2.arcLength(cnt, True),
+                                      True)
             # we know it's a rectangle...let's ensure a certain size
             _, _, w, h = cv2.boundingRect(approx)
             # Only consider rectangles with a width and height greater than 50 pixels
@@ -173,7 +181,9 @@ class ImageInstanceOps:
                 # box =  np.int0([approx[0][0], approx[1][0], approx[2][0], approx[3][0]])
                 shape = Shape(cnt)
                 shapes.append(shape)
-        shapes = ShapeArray(shapes).sort_shapes(sort_method=ShapeSortMethods.TOP_TO_BOTTOM_LEFT_TO_RIGHT, tolerance=30)
+        shapes = ShapeArray(shapes).sort_shapes(
+            sort_method=ShapeSortMethods.TOP_TO_BOTTOM_LEFT_TO_RIGHT,
+            tolerance=30)
         return shapes
 
     def gen_field_blocks():
@@ -190,9 +200,8 @@ class ImageInstanceOps:
         try:
             img = image.copy()
             # origDim = img.shape[:2]
-            img = ImageUtils.resize_util(
-                img, template.page_dimensions[0], template.page_dimensions[1]
-            )
+            img = ImageUtils.resize_util(img, template.page_dimensions[0],
+                                         template.page_dimensions[1])
             if img.max() > img.min():
                 img = ImageUtils.normalize_util(img)
             # Processing copies
@@ -208,8 +217,7 @@ class ImageInstanceOps:
                 self.append_save_img(3, morph)
                 # Remove shadows further, make columns/boxes darker (less gamma)
                 morph = ImageUtils.adjust_gamma(
-                    morph, config.threshold_params.GAMMA_LOW
-                )
+                    morph, config.threshold_params.GAMMA_LOW)
                 # TODO: all numbers should come from either constants or config
                 _, morph = cv2.threshold(morph, 220, 220, cv2.THRESH_TRUNC)
                 morph = ImageUtils.normalize_util(morph)
@@ -238,25 +246,29 @@ class ImageInstanceOps:
                 # print("Begin Alignment")
                 # Open : erode then dilate
                 v_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 10))
-                morph_v = cv2.morphologyEx(
-                    morph, cv2.MORPH_OPEN, v_kernel, iterations=3
-                )
+                morph_v = cv2.morphologyEx(morph,
+                                           cv2.MORPH_OPEN,
+                                           v_kernel,
+                                           iterations=3)
                 _, morph_v = cv2.threshold(morph_v, 200, 200, cv2.THRESH_TRUNC)
                 morph_v = 255 - ImageUtils.normalize_util(morph_v)
 
                 if config.outputs.show_image_level >= 3:
-                    InteractionUtils.show(
-                        "morphed_vertical", morph_v, 0, 1, config=config
-                    )
+                    InteractionUtils.show("morphed_vertical",
+                                          morph_v,
+                                          0,
+                                          1,
+                                          config=config)
                 # InteractionUtils.show("morph1",morph,0,1,config=config)
                 # InteractionUtils.show("morphed_vertical",morph_v,0,1,config=config)
                 self.append_save_img(3, morph_v)
                 morph_thr = 60  # for Mobile images, 40 for scanned Images
-                _, morph_v = cv2.threshold(
-                    morph_v, morph_thr, 255, cv2.THRESH_BINARY)
+                _, morph_v = cv2.threshold(morph_v, morph_thr, 255,
+                                           cv2.THRESH_BINARY)
                 # kernel best tuned to 5x5 now
-                morph_v = cv2.erode(morph_v, np.ones(
-                    (5, 5), np.uint8), iterations=2)
+                morph_v = cv2.erode(morph_v,
+                                    np.ones((5, 5), np.uint8),
+                                    iterations=2)
                 self.append_save_img(3, morph_v)
                 # h_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (10, 2))
                 # morph_h = cv2.morphologyEx(morph, cv2.MORPH_OPEN, h_kernel, iterations=3)
@@ -266,9 +278,11 @@ class ImageInstanceOps:
                 # _, morph_h = cv2.threshold(morph_h,morph_thr,255,cv2.THRESH_BINARY)
                 # morph_h = cv2.erode(morph_h,  np.ones((5,5),np.uint8), iterations = 2)
                 if config.outputs.show_image_level >= 3:
-                    InteractionUtils.show(
-                        "morph_thr_eroded", morph_v, 0, 1, config=config
-                    )
+                    InteractionUtils.show("morph_thr_eroded",
+                                          morph_v,
+                                          0,
+                                          1,
+                                          config=config)
                 self.append_save_img(6, morph_v)
                 # template relative alignment code
                 for field_block in template.field_blocks:
@@ -284,33 +298,22 @@ class ImageInstanceOps:
                     )
                     shift, steps = 0, 0
                     while steps < max_steps:
-                        left_mean = np.mean(
-                            morph_v[
-                                s[1]: s[1] + d[1],
-                                s[0] + shift - thk: -thk + s[0] + shift + match_col,
-                            ]
-                        )
-                        right_mean = np.mean(
-                            morph_v[
-                                s[1]: s[1] + d[1],
-                                s[0]
-                                + shift
-                                - match_col
-                                + d[0]
-                                + thk: thk
-                                + s[0]
-                                + shift
-                                + d[0],
-                            ]
-                        )
+                        left_mean = np.mean(morph_v[
+                            s[1]:s[1] + d[1],
+                            s[0] + shift - thk:-thk + s[0] + shift + match_col,
+                        ])
+                        right_mean = np.mean(morph_v[
+                            s[1]:s[1] + d[1],
+                            s[0] + shift - match_col + d[0] + thk:thk + s[0] +
+                            shift + d[0],
+                        ])
                         # For demonstration purposes-
                         if (field_block.name == "int1"):
                             ret = morph_v.copy()
-                            cv2.rectangle(ret,
-                                          (s[0]+shift-thk, s[1]),
-                                          (s[0]+shift+thk+d[0], s[1]+d[1]),
-                                          constants.CLR_WHITE,
-                                          3)
+                            cv2.rectangle(
+                                ret, (s[0] + shift - thk, s[1]),
+                                (s[0] + shift + thk + d[0], s[1] + d[1]),
+                                constants.CLR_WHITE, 3)
                             appendSaveImg(6, ret)
                         print(shift, left_mean, right_mean)
                         left_shift, right_shift = left_mean > 100, right_mean > 100
@@ -327,18 +330,21 @@ class ImageInstanceOps:
                         steps += 1
 
                     field_block.shift = shift
-                    print("Aligned field_block: ", field_block.name, "Corrected Shift:",
-                          field_block.shift, ", dimensions:", field_block.dimensions,
-                          "origin:", field_block.origin, '\n')
+                    print("Aligned field_block: ", field_block.name,
+                          "Corrected Shift:", field_block.shift,
+                          ", dimensions:", field_block.dimensions, "origin:",
+                          field_block.origin, '\n')
                 print("End Alignment")
 
             final_align = None
             if config.outputs.show_image_level >= 2:
-                initial_align = self.draw_template_layout(
-                    img, template, shifted=False)
-                final_align = self.draw_template_layout(
-                    img, template, shifted=True, draw_qvals=True
-                )
+                initial_align = self.draw_template_layout(img,
+                                                          template,
+                                                          shifted=False)
+                final_align = self.draw_template_layout(img,
+                                                        template,
+                                                        shifted=True,
+                                                        draw_qvals=True)
                 # appendSaveImg(4,mean_vals)
                 self.append_save_img(2, initial_align)
                 self.append_save_img(2, final_align)
@@ -360,8 +366,7 @@ class ImageInstanceOps:
                         x, y = (pt.x + field_block.shift, pt.y)
                         rect = [y, y + box_h, x, x + box_w]
                         q_strip_vals.append(
-                            cv2.mean(
-                                img[rect[0]: rect[1], rect[2]: rect[3]])[0]
+                            cv2.mean(img[rect[0]:rect[1], rect[2]:rect[3]])[0]
                             # detectCross(img, rect) ? 100 : 0
                         )
                     q_std_vals.append(round(np.std(q_strip_vals), 2))
@@ -384,8 +389,8 @@ class ImageInstanceOps:
             # Note: Plotting takes Significant times here --> Change Plotting args
             # to support show_image_level
             # , "Mean Intensity Histogram",plot_show=True, sort_in_plot=True)
-            global_thr, _, _ = self.get_global_threshold(
-                all_q_vals, looseness=4)
+            global_thr, _, _ = self.get_global_threshold(all_q_vals,
+                                                         looseness=4)
 
             logger.info(
                 f"Thresholding:\tglobal_thr: {round(global_thr, 2)} \tglobal_std_THR: {round(global_std_thresh, 2)}\t{'(Looks like a Xeroxed OMR)' if (global_thr == 255) else ''}"
@@ -411,7 +416,8 @@ class ImageInstanceOps:
                 #   s[1]+d[1]),CLR_BLACK,3)
                 for field_block_bubbles in field_block.traverse_bubbles:
                     # All Black or All White case
-                    no_outliers = all_q_std_vals[total_q_strip_no] < global_std_thresh
+                    no_outliers = all_q_std_vals[
+                        total_q_strip_no] < global_std_thresh
                     # print(total_q_strip_no, field_block_bubbles[0].field_label,
                     #   all_q_std_vals[total_q_strip_no], "no_outliers:", no_outliers)
                     per_q_strip_threshold = self.get_local_threshold(
@@ -438,9 +444,8 @@ class ImageInstanceOps:
                     # TODO: get rid of total_q_box_no
                     detected_bubbles = []
                     for bubble in field_block_bubbles:
-                        bubble_is_marked = (
-                            per_q_strip_threshold > all_q_vals[total_q_box_no]
-                        )
+                        bubble_is_marked = (per_q_strip_threshold
+                                            > all_q_vals[total_q_box_no])
                         total_q_box_no += 1
                         if bubble_is_marked:
                             detected_bubbles.append(bubble)
@@ -490,9 +495,7 @@ class ImageInstanceOps:
                         multi_marked_local = field_label in omr_response
                         omr_response[field_label] = (
                             (omr_response[field_label] + field_value)
-                            if multi_marked_local
-                            else field_value
-                        )
+                            if multi_marked_local else field_value)
                         # TODO: generalize this into identifier
                         # multi_roll = multi_marked_local and "Roll" in str(q)
                         multi_marked = multi_marked or multi_marked_local
@@ -506,8 +509,7 @@ class ImageInstanceOps:
                             q_nums[key].append(
                                 f"{key[:2]}_c{str(block_q_strip_no)}")
                             all_c_box_vals[key].append(
-                                all_q_strip_arrs[total_q_strip_no]
-                            )
+                                all_q_strip_arrs[total_q_strip_no])
 
                     block_q_strip_no += 1
                     total_q_strip_no += 1
@@ -516,9 +518,8 @@ class ImageInstanceOps:
             per_omr_threshold_avg /= total_q_strip_no
             per_omr_threshold_avg = round(per_omr_threshold_avg, 2)
             # Translucent
-            cv2.addWeighted(
-                final_marked, alpha, transp_layer, 1 - alpha, 0, final_marked
-            )
+            cv2.addWeighted(final_marked, alpha, transp_layer, 1 - alpha, 0,
+                            final_marked)
             # Box types
             if config.outputs.show_image_level >= 5:
                 # plt.draw()
@@ -546,12 +547,13 @@ class ImageInstanceOps:
 
             if config.outputs.show_image_level >= 3 and final_align is not None:
                 final_align = ImageUtils.resize_util_h(
-                    final_align, int(config.dimensions.display_height)
-                )
+                    final_align, int(config.dimensions.display_height))
                 # [final_align.shape[1],0])
-                InteractionUtils.show(
-                    "Template Alignment Adjustment", final_align, 0, 0, config=config
-                )
+                InteractionUtils.show("Template Alignment Adjustment",
+                                      final_align,
+                                      0,
+                                      0,
+                                      config=config)
 
             if config.outputs.save_detections and save_dir is not None:
                 if multi_roll:
@@ -571,10 +573,13 @@ class ImageInstanceOps:
             raise e
 
     @staticmethod
-    def draw_template_layout(img, template, shifted=True, draw_qvals=False, border=-1):
-        img = ImageUtils.resize_util(
-            img, template.page_dimensions[0], template.page_dimensions[1]
-        )
+    def draw_template_layout(img,
+                             template,
+                             shifted=True,
+                             draw_qvals=False,
+                             border=-1):
+        img = ImageUtils.resize_util(img, template.page_dimensions[0],
+                                     template.page_dimensions[1])
         final_align = img.copy()
         box_w, box_h = template.bubble_dimensions
         for field_block in template.field_blocks:
@@ -603,7 +608,8 @@ class ImageInstanceOps:
                     cv2.rectangle(
                         final_align,
                         (int(x + box_w / 10), int(y + box_h / 10)),
-                        (int(x + box_w - box_w / 10), int(y + box_h - box_h / 10)),
+                        (int(x + box_w - box_w / 10),
+                         int(y + box_h - box_h / 10)),
                         constants.CLR_GRAY,
                         border,
                     )
@@ -619,9 +625,9 @@ class ImageInstanceOps:
                             2,
                         )
             if shifted:
-                text_in_px = cv2.getTextSize(
-                    field_block.name, cv2.FONT_HERSHEY_SIMPLEX, constants.TEXT_SIZE, 4
-                )
+                text_in_px = cv2.getTextSize(field_block.name,
+                                             cv2.FONT_HERSHEY_SIMPLEX,
+                                             constants.TEXT_SIZE, 4)
                 cv2.putText(
                     final_align,
                     field_block.name,
@@ -677,11 +683,9 @@ class ImageInstanceOps:
             ],
         )
 
-        global_default_threshold = (
-            constants.GLOBAL_PAGE_THRESHOLD_WHITE
-            if PAGE_TYPE_FOR_THRESHOLD == "white"
-            else constants.GLOBAL_PAGE_THRESHOLD_BLACK
-        )
+        global_default_threshold = (constants.GLOBAL_PAGE_THRESHOLD_WHITE
+                                    if PAGE_TYPE_FOR_THRESHOLD == "white" else
+                                    constants.GLOBAL_PAGE_THRESHOLD_BLACK)
 
         # Sort the Q bubbleValues
         # TODO: Change var name of q_vals
@@ -721,8 +725,10 @@ class ImageInstanceOps:
             ax.bar(range(len(q_vals_orig)),
                    q_vals if sort_in_plot else q_vals_orig)
             ax.set_title(plot_title)
-            thrline = ax.axhline(global_thr, color="green",
-                                 ls="--", linewidth=5)
+            thrline = ax.axhline(global_thr,
+                                 color="green",
+                                 ls="--",
+                                 linewidth=5)
             thrline.set_label("Global Threshold")
             thrline = ax.axhline(thr2, color="red", ls=":", linewidth=3)
             thrline.set_label("THR2 Line")
@@ -739,9 +745,12 @@ class ImageInstanceOps:
 
         return global_thr, j_low, j_high
 
-    def get_local_threshold(
-        self, q_vals, global_thr, no_outliers, plot_title=None, plot_show=True
-    ):
+    def get_local_threshold(self,
+                            q_vals,
+                            global_thr,
+                            no_outliers,
+                            plot_title=None,
+                            plot_show=True):
         """
         TODO: Update this documentation too-
         //No more - Assumption : Colwise background color is uniformly gray or white,
@@ -773,11 +782,8 @@ class ImageInstanceOps:
         # Small no of pts cases:
         # base case: 1 or 2 pts
         if len(q_vals) < 3:
-            thr1 = (
-                global_thr
-                if np.max(q_vals) - np.min(q_vals) < config.threshold_params.MIN_GAP
-                else np.mean(q_vals)
-            )
+            thr1 = (global_thr if np.max(q_vals) - np.min(q_vals)
+                    < config.threshold_params.MIN_GAP else np.mean(q_vals))
         else:
             # qmin, qmax, qmean, qstd = round(np.min(q_vals),2), round(np.max(q_vals),2),
             #   round(np.mean(q_vals),2), round(np.std(q_vals),2)
@@ -806,10 +812,8 @@ class ImageInstanceOps:
                     thr1 = q_vals[i - 1] + jump / 2
             # print(field_label,q_vals,max1)
 
-            confident_jump = (
-                config.threshold_params.MIN_JUMP
-                + config.threshold_params.CONFIDENT_SURPLUS
-            )
+            confident_jump = (config.threshold_params.MIN_JUMP +
+                              config.threshold_params.CONFIDENT_SURPLUS)
             # If not confident, then only take help of global_thr
             if max1 < confident_jump:
                 if no_outliers:
@@ -849,14 +853,11 @@ class ImageInstanceOps:
         if self.save_image_level >= int(key) and self.save_img_list[key] != []:
             name = os.path.splitext(filename)[0]
             result = np.hstack(
-                tuple(
-                    [
-                        ImageUtils.resize_util_h(
-                            img, config.dimensions.display_height)
-                        for img in self.save_img_list[key]
-                    ]
-                )
-            )
+                tuple([
+                    ImageUtils.resize_util_h(img,
+                                             config.dimensions.display_height)
+                    for img in self.save_img_list[key]
+                ]))
             result = ImageUtils.resize_util(
                 result,
                 min(
@@ -865,8 +866,8 @@ class ImageInstanceOps:
                     int(config.dimensions.display_width * 2.5),
                 ),
             )
-            ImageUtils.save_img(
-                f"{save_dir}stack/{name}_{str(key)}_stack.jpg", result)
+            ImageUtils.save_img(f"{save_dir}stack/{name}_{str(key)}_stack.jpg",
+                                result)
 
     def reset_all_save_img(self):
         for i in range(self.save_image_level):

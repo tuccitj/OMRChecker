@@ -8,6 +8,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 import src.custom.gridfinder as gridfinder
 from src.logger import logger
+from sklearn.cluster import KMeans
 
 
 class DrawConfigs:
@@ -41,6 +42,10 @@ class DrawConfigs:
                                    fontScale=1,
                                    color=(0, 0, 0),
                                    thickness=-1)
+    LARGE_FONT_IN_WHITE = DrawConfig(fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                                     fontScale=5,
+                                     color=(0, 0, 255),
+                                     thickness=5)
     DRAW_ON_BLANK = DrawConfig(
         fontFace=cv2.FONT_HERSHEY_SIMPLEX,
         fontScale=1,
@@ -63,6 +68,7 @@ class ShapeSortMethods:
     DEFAULT = 0
     LEFT_TO_RIGHT_TOP_TO_BOTTOM = 1
     TOP_TO_BOTTOM_LEFT_TO_RIGHT = 2
+    TEST_2 = 3
 
 
 class Shape():
@@ -78,6 +84,7 @@ class Shape():
         draw_label_config=DrawConfigs.DEFAULT_LABEL,
     ):
         self.contour = contour
+        self.image = None
         self.vertices = self._get_vertices(contour, sort=True)
         self.draw_line_config = draw_line_config
         self.draw_label_config = draw_label_config
@@ -102,6 +109,7 @@ class Shape():
             draw_label_config = self.draw_label_config
         # draw the shape
         # cv2.polylines(image, [self.contour], True, draw_line_config.color, draw_line_config.thickness)
+        # Draw the contours in the image
         cv2.drawContours(
             image,
             [self.contour],
@@ -138,20 +146,20 @@ class Shape():
                 sub_image=self.processing_mask, debug_level=0)
 
     def _get_vertices(self, contour, sort):
-        
+
         cnt = contour
         # Calculate centroid coordinates
         M = cv2.moments(cnt)
         cx = int(M['m10'] / M['m00'])
         cy = int(M['m01'] / M['m00'])
         # Set label position to centroid coordinates
-        self.label_position = (cx-10, cy)
+        self.label_position = (cx - 10, cy)
         approx = cv2.approxPolyDP(cnt, 0.01 * cv2.arcLength(cnt, True), True)
         vertices = np.int0(
             [approx[0][0], approx[1][0], approx[2][0], approx[3][0]])
         if sort:
             vertices = self._sort_vertices(vertices)
-       
+
         return vertices
 
     def _sort_vertices(self, box):
@@ -235,6 +243,46 @@ class ShapeArray():
 
     #? Should this be a public method so we can sort the ShapeArray on demand? Possibly helpful for multiprocessing
     #? Additionally, we need to assign an ID to each shape once they're in the proper order...I'd like to avoid another iteration
+    # Define the number of clusters and tolerance
+    # def _sort_shapes(self, sort_method, tolerance=30):
+    # shapes = self.shapes
+    # vertices = [shape.vertices]
+    # print(vertices)
+    # if sort_method == ShapeSortMethods.GROUP_SIMILAR_Y_SORT_BY_X:
+    #     for shape in shapes:
+    #         vertices = shape.vertices
+
+    def _sort_shapes_test_2(self, sort_method, tolerance=30):
+        shapes = self.shapes
+        if sort_method == ShapeSortMethods.TOP_TO_BOTTOM_LEFT_TO_RIGHT:
+            key_func = lambda shape: (round(
+                sum(vertex[0] for vertex in shape.vertices) / 4 / tolerance),
+                                      round(
+                                          sum(vertex[1] for vertex in shape.
+                                              vertices) / 4 / tolerance))
+        elif sort_method == ShapeSortMethods.LEFT_TO_RIGHT_TOP_TO_BOTTOM:
+            key_func = lambda shape: (round(
+                sum(vertex[1] for vertex in shape.vertices) / 4 / tolerance),
+                                      round(
+                                          sum(vertex[0] for vertex in shape.
+                                              vertices) / 4 / tolerance))
+        shapes_final = sorted(shapes, key=key_func)
+        return shapes_final
+
+    def _sort_shapes_test1(self, sort_method, tolerance=30):
+        shapes = self.shapes
+        if sort_method == ShapeSortMethods.TOP_TO_BOTTOM_LEFT_TO_RIGHT:
+            key_func = lambda shape: tuple(
+                (round(vertex[0] / tolerance), round(vertex[1] / tolerance))
+                for vertex in shape.vertices)
+        elif sort_method == ShapeSortMethods.LEFT_TO_RIGHT_TOP_TO_BOTTOM:
+            tolerance = 60
+            key_func = lambda shape: tuple(
+                (round(vertex[1] / tolerance), round(vertex[0] / tolerance))
+                for vertex in shape.vertices)
+        shapes_final = sorted(shapes, key=key_func)
+        return shapes_final
+
     def _sort_shapes(self, sort_method, tolerance=30):
         """Method for sorting shapes in a FieldBlock
 
@@ -247,7 +295,9 @@ class ShapeArray():
         """
         shapes = self.shapes
         shapes_final = []
+
         if sort_method == ShapeSortMethods.TOP_TO_BOTTOM_LEFT_TO_RIGHT:
+            #sort by x-value
             sorted_shapes = sorted(shapes,
                                    key=lambda shape: shape.vertices[0][0])
             # TODO tolerance should either be determined mathmatically w/distributions or set as a constant in config
@@ -260,6 +310,60 @@ class ShapeArray():
                     sorted(list(group),
                            key=lambda shape: shape.vertices[0][1]))
         elif sort_method == ShapeSortMethods.LEFT_TO_RIGHT_TOP_TO_BOTTOM:
+            detection_boxes = self.shapes
+            # Get the list of y values in the upper left vertex for each detection box
+            y_vals = np.array([box.vertices[0][1] for box in detection_boxes])
+            # Use k-means clustering to group the detection boxes by y values
+            n_clusters = 3
+            reshaped_y_vals = y_vals.reshape(-1, 1)
+            kmeans = KMeans(n_clusters=n_clusters,
+                            random_state=0,
+                            n_init='auto').fit(reshaped_y_vals)
+            # Get the indices of the detection boxes in each cluster
+            cluster_indices = [
+                np.where(kmeans.labels_ == i)[0] for i in range(n_clusters)
+            ]
+            # Get the detection boxes in each cluster
+            clustered_boxes = [[detection_boxes[i] for i in indices]
+                               for indices in cluster_indices]
+            # Sort the detection boxes in each row by their x-values
+            for row in clustered_boxes:
+                row.sort(key=lambda shape: shape.vertices[0][0])
+            # Sort the rows by the y-value of their first detection box
+            clustered_boxes.sort(key=lambda row: row[0].vertices[0][1])
+            # flatten
+            flattened_boxes = [box for row in clustered_boxes for box in row]
+            # concatenated_boxes = np.concatenate((row1, row2, row3), axis=0)
+            return flattened_boxes
+
+        elif sort_method == ShapeSortMethods.TEST_2:
+            detection_boxes = self.shapes
+            # Get the list of y values in the upper left vertex for each detection box
+            y_vals = np.array([box.vertices[0][1] for box in detection_boxes])
+            # Use k-means clustering to group the detection boxes by y values
+            n_clusters = 3
+            reshaped_y_vals = y_vals.reshape(-1, 1)
+
+            kmeans = KMeans(n_clusters=n_clusters,
+                            random_state=0,
+                            n_init='auto').fit(reshaped_y_vals)
+            detection_boxes = np.array(self.shapes)
+            # Get the detection boxes in each cluster
+            clustered_boxes = [
+                detection_boxes[kmeans.labels_ == i] for i in range(n_clusters)
+            ]
+            # Sort the detection boxes in each row by their x-values
+            for i in range(n_clusters):
+                clustered_boxes[i] = clustered_boxes[i][np.argsort(
+                    [box.vertices[0][0] for box in clustered_boxes[i]])]
+            # Sort the rows by the y-value of their first detection box
+            clustered_boxes.sort(key=lambda row: row[0].vertices[0][1])
+            # Flatten the list
+            flattened_boxes = [box for row in clustered_boxes for box in row]
+
+            # concatenated_boxes = np.concatenate((row1, row2, row3), axis=0)
+            return flattened_boxes
+
             # TODO tolerance should be a parameter...should be able to set defaults somewhere
             sorted_shapes = sorted(shapes,
                                    key=lambda shape: shape.vertices[0][1])
@@ -308,8 +412,8 @@ class ShapeArray():
         blank_image.fill(255)
         blank_image = cv2.cvtColor(blank_image, cv2.COLOR_BGR2RGB)
         # Generate a list of (index, shape) tuples to be processed by `process_shape()`.
-        idx_to_debug = [] # indexes of shapes to enable debugging for
-        shape_args = [] # list to store arguments for each shape
+        idx_to_debug = []  # indexes of shapes to enable debugging for
+        shape_args = []  # list to store arguments for each shape
         for idx, shape in enumerate(self.shapes):
             if idx in idx_to_debug:
                 # enable debugging for this shape
@@ -317,18 +421,14 @@ class ShapeArray():
             else:
                 # disable debugging for this shape
                 debug_level = debug_level
-            shape_arg = (idx, shape, src_image, proc_template_method, box_detection_method, debug_level)
+            shape_arg = (idx, shape, src_image, proc_template_method,
+                         box_detection_method, debug_level)
             shape_args.append(shape_arg)
         run = 0
         if run == 1:
-            shape_args = [(
-                idx,
-                shape,
-                src_image,
-                proc_template_method,
-                box_detection_method,
-                debug_level
-            ) for idx, shape in enumerate(self.shapes)]
+            shape_args = [(idx, shape, src_image, proc_template_method,
+                           box_detection_method, debug_level)
+                          for idx, shape in enumerate(self.shapes)]
         # Use `map_async()` to execute `process_shape()` on each tuple in parallel.
         # the 'with' statement automatically calls the close() and join() methods on the pool
         with multiprocessing.Pool() as pool:
@@ -424,19 +524,24 @@ class ShapeArray():
             detection_method=proc_template_method,
             display_image=False,
             debug_level=debug_level)
-        
+
         shape.detection_boxes = self._get_detection_boxes(
             sub_image,
             idx,
             detection_method=box_detection_method,
             display_image=False,
-            debug_level=3
-            )
-        
-        shape.detection_boxes = shape.detection_boxes
+            debug_level=0)
+
+        # shape.detection_boxes = shape.detection_boxes
+        test_boxes = shape.detection_boxes
+        start_time = time.perf_counter()
         shape.detection_boxes = shape.detection_boxes.sort_shapes(
             sort_method=ShapeSortMethods.LEFT_TO_RIGHT_TOP_TO_BOTTOM,
             tolerance=50)
+        end_time = time.perf_counter()
+        execution_time = end_time - start_time
+        print("Execution time for Sort Orig: {:.6f} seconds".format(
+            execution_time))
         # shape.isValidated = self._validate(template_config)
 
         # proc_img is flattened answer template. not filled in boxes marked boxes on source img
@@ -451,7 +556,7 @@ class ShapeArray():
         isMarked = shape.isMarked
         return shape
 
-    # ! Deprecated, use process_shape
+    #! Deprecated, use process_shape
     def process(
         self,
         src_image,
@@ -484,8 +589,18 @@ class ShapeArray():
                 idx,
                 detection_method=box_detection_method,
                 display_image=False,
-                debug_level=3,
+                debug_level=0,
             )
+
+            test_boxes = shape.detection_boxes
+            start_time = time.perf_counter()
+            shape.detection_boxes = shape.detection_boxes.sort_shapes(
+                sort_method=ShapeSortMethods.LEFT_TO_RIGHT_TOP_TO_BOTTOM,
+                tolerance=50)
+            end_time = time.perf_counter()
+            execution_time = end_time - start_time
+            print("Execution time for Sort Orig: {:.6f} seconds".format(
+                execution_time))
             # proc_img is flattened answer template. not filled in boxes marked boxes on source img
             proc_sub_img = proc_template.draw(
                 proc_img,
@@ -497,7 +612,7 @@ class ShapeArray():
             shape.processing_mask = proc_sub_img
             shape.process_detection_boxes()
             if shape.detection_boxes:
-                for idx,detection_box in enumerate(shape.detection_boxes):
+                for idx, detection_box in enumerate(shape.detection_boxes):
                     detection_box.draw(
                         src_image,
                         label_shape=True,
@@ -506,7 +621,7 @@ class ShapeArray():
                         draw_line_config=DrawConfigs.DEFAULT_LINE,
                         display_image=False,
                     )
-
+        plshow("src", src_image)
         return src_image
         # plshow("Final", src_image)
         if debug_level == 1:
@@ -567,9 +682,8 @@ class ShapeArray():
         display_image=False,
     ):
         if detection_method == DetectionMethod.METHOD_7:
-            detection_boxes, db_contours = gridfinder.method7(sub_image,
-                                                              idx,
-                                                              debug_level)
+            detection_boxes, db_contours = gridfinder.method7(
+                sub_image, idx, debug_level)
             # this is convenient but should sorting happen earlier?
             detection_boxes = ShapeArray(detection_boxes)
         if display_image:

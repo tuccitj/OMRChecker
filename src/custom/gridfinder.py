@@ -988,14 +988,9 @@ def method7(src_image, idx="", debug_level=0):
         try:
             # cv2.drawContours(src_image, [cnt], -1, (0, 255, 0), 5)
             shape = Shape(cnt)
-            shape.draw(
-                        src_image,
-                        label_shape=True,
-                        label=str(idx),
-                        draw_label_config=DrawConfigs.DEFAULT_LABEL,
-                        draw_line_config=DrawConfigs.DEFAULT_LINE,
-                        display_image=False,
-                    )
+            shape.image = src_image
+            
+            
             shapes.append(shape)
             contours.append(cnt)
 
@@ -1008,7 +1003,15 @@ def method7(src_image, idx="", debug_level=0):
             ## TODO Log Errors
             continue
     if debug_level == 1 or debug_level == 2:
-        
+        for idx, cnt in enumerate(cnts):
+            shape.draw(
+                            src_image,
+                            label_shape=True,
+                            label=str(idx),
+                            draw_label_config=DrawConfigs.DEFAULT_LABEL,
+                            draw_line_config=DrawConfigs.DEFAULT_LINE,
+                            display_image=False,
+                        )
         plshow("Final", src_image)
 
     return shapes, contours
