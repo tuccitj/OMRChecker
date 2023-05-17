@@ -67,6 +67,12 @@ class ImageInstanceOps:
         )
 
         field_blocks = self.get_shapes(in_omr)
+        src_img = cv2.cvtColor(in_omr, cv2.COLOR_BGR2RGB).copy()
+        debug_level = 0
+        if debug_level == 1:
+            for idx, field_block in enumerate(field_blocks):
+                field_block.draw(src_img, label_shape=True, label=str(idx), draw_line_config=DrawConfigs.DEFAULT_LINE, draw_label_config=DrawConfigs.LARGE_FONT_IN_WHITE)
+            plshow("Field Blocks", src_img)
         # boo = in_omr.copy()
         # plshow("hi", field_blocks.draw(boo, label_shapes=True, draw_label_config=DrawConfigs.LARGE_FONT_IN_WHITE, draw_line_config=DrawConfigs.DEFAULT_LINE))
         # we have field blocks
@@ -84,6 +90,8 @@ class ImageInstanceOps:
                 box_detection_method=box_detection_method,
                 debug_level=0,
             )
+            
+           
             end_time = time.perf_counter()
             execution_time = end_time - start_time
             print("Execution time for Multiprocessing: {:.6f} seconds".format(
@@ -140,7 +148,6 @@ class ImageInstanceOps:
         # else:
         #     print("Too many or too few rectangles detected")
 
-        return template
         # we need to get the orientation and the number of elements in a roll...this is all in constants.py - how to access? we also do need the template
         # so here is a design decision - if we are to generate based on field_type, the field types would  need to be provided in the template...if not,
         # specify in the template.json options...

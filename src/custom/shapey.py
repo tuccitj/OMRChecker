@@ -3,6 +3,7 @@ import multiprocessing
 from pprint import pprint
 import time
 from itertools import groupby
+import timeit
 import cv2
 import numpy as np
 from matplotlib import pyplot as plt
@@ -84,7 +85,17 @@ class ShapeSortMethods:
     TOP_TO_BOTTOM_LEFT_TO_RIGHT = 2
     TEST_2 = 3,
     TEST_L2R = 4
-
+class CodeTimer:
+    def __init__(self, name=None):
+        self.name = " '"  + name + "'" if name else ''
+    def __enter__(self):
+        # end_time = timeit.default_timer()
+        self.start_time = timeit.default_timer()
+    def __exit__(self, exc_type, exc_value, traceback):
+        # self.end_time = (timeit.default_timer() - self.start) * 1000.0
+        self.end_time = timeit.default_timer()
+        execution_time = self.end_time - self.start_time
+        logger.info(f"Execution time for {self.name}: {execution_time:.6f} seconds")
 
 class Shape():
     """Smallest unit for processing. A shape is usually within a ShapeArray
@@ -300,7 +311,6 @@ class ShapeArray():
         """
         shapes = self.shapes
         shapes_final = []
-
         if sort_method == ShapeSortMethods.TOP_TO_BOTTOM_LEFT_TO_RIGHT:
             #sort by x-value
             sorted_shapes = sorted(shapes,
@@ -517,6 +527,19 @@ class ShapeArray():
             }
         }
         src_image = cv2.cvtColor(src_image, cv2.COLOR_BGR2RGB)
+        # for shape in self.shapes:
+        #     if len(shape.detection_boxes) == 27:
+        #         for idx, detection_box in enumerate(shape.detection_boxes):
+        #             #TODO Implement the DrawConfigs properly for transparent_box case
+        #             src_image = detection_box.draw(
+        #                 src_image,
+        #                 label_shape=True,
+        #                 label=str(idx),
+        #                 draw_label_config=DrawConfigs.DEFAULT_LABEL,
+        #                 draw_line_config=DrawConfigs.DEFAULT_LINE,
+        #                 transparent_box=False,
+        #                 display_image=False)
+            
         for shape in self.shapes:
             if len(shape.detection_boxes) == 27:
                 for idx, detection_box in enumerate(shape.detection_boxes):
@@ -533,7 +556,7 @@ class ShapeArray():
                             display_image=False)
             else:
                 detection_box.value = ""
-        #                 )
+                        
         # TODO: At this point, we have all detection blocks and isMarked.
         # Now we need to group the detection boxes based on an inputted
         # template.json. Each group should have a corresponding FieldType
@@ -592,25 +615,16 @@ class ShapeArray():
             detection_method=box_detection_method,
             display_image=False,
             debug_level=0)
-
-        # shape.detection_boxes = shape.detection_boxes
-        test_boxes = shape.detection_boxes
-        start_time = time.perf_counter()
+        
+        # with CodeTimer(f"Sort Shapes @ {idx}"):
         shape.detection_boxes = shape.detection_boxes.sort_shapes(
-            sort_method=ShapeSortMethods.LEFT_TO_RIGHT_TOP_TO_BOTTOM,
-            tolerance=50)
-        end_time = time.perf_counter()
-        execution_time = end_time - start_time
-        print("Execution time for Sort Orig: {:.6f} seconds".format(
-            execution_time))
-        # shape.isValidated = self._validate(template_config)
-
+                    sort_method=ShapeSortMethods.LEFT_TO_RIGHT_TOP_TO_BOTTOM,
+                    tolerance=50)
         # proc_img is flattened answer template. not filled in boxes marked boxes on source img
         proc_sub_img = proc_template.draw(
             proc_img,
             draw_line_config=DrawConfigs.DRAW_ON_BLANK,
             display_image=False)
-
         # if we invert proc_img, the marked boxes are now the filled boxes
         inverted_proc_sub_img = 255 - proc_sub_img
         shape.processing_mask = inverted_proc_sub_img
