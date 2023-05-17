@@ -6,10 +6,19 @@ from itertools import groupby
 import cv2
 import numpy as np
 from matplotlib import pyplot as plt
+import src.constants as constants
 import src.custom.gridfinder as gridfinder
 from src.logger import logger
 from sklearn.cluster import KMeans
 
+def rgb(red, green, blue):
+    return red, green, blue
+def sort_points_clockwise(points):
+    center = np.mean(points, axis=0)  # Calculate the center point
+    angles = np.arctan2(points[:, 1] - center[1], points[:, 0] - center[0])  # Calculate angles relative to the center point
+    sorted_indices = np.argsort(angles)  # Sort indices based on angles
+    sorted_points = points[sorted_indices]  # Sort the points based on the sorted indices
+    return sorted_points
 
 class DrawConfigs:
     """Repository of configurations for use with cv2 functions such as DrawContours(), PolyLines(), and PutText()"""
@@ -24,34 +33,49 @@ class DrawConfigs:
 
     DEFAULT = DrawConfig(fontFace=cv2.FONT_HERSHEY_SIMPLEX,
                          fontScale=1,
-                         color=(0, 0, 255),
+                         color=rgb(0, 0, 255),
                          thickness=2)
     DEFAULT_LINE = DrawConfig(fontFace=cv2.FONT_HERSHEY_SIMPLEX,
                               fontScale=1,
-                              color=(0, 0, 255),
+                              color=rgb(0, 0, 255),
                               thickness=2)
     DEFAULT_LABEL = DrawConfig(fontFace=cv2.FONT_HERSHEY_SIMPLEX,
                                fontScale=1,
-                               color=(0, 0, 255),
+                               color=rgb(0, 0, 255),
                                thickness=2)
     UPPER_LEFT_LARGE_LABEL = DrawConfig(fontFace=cv2.FONT_HERSHEY_SIMPLEX,
                                         fontScale=5,
-                                        color=(0, 0, 255),
+                                        color=rgb(0, 0, 255),
                                         thickness=5)
     IMG_PROC_TEMPLATE = DrawConfig(fontFace=cv2.FONT_HERSHEY_SIMPLEX,
                                    fontScale=1,
-                                   color=(0, 0, 0),
+                                   color=rgb(0, 0, 0),
                                    thickness=-1)
     LARGE_FONT_IN_WHITE = DrawConfig(fontFace=cv2.FONT_HERSHEY_SIMPLEX,
                                      fontScale=5,
-                                     color=(0, 0, 255),
+                                     color=rgb(0, 0, 255),
                                      thickness=5)
     DRAW_ON_BLANK = DrawConfig(
         fontFace=cv2.FONT_HERSHEY_SIMPLEX,
         fontScale=1,
-        color=(255, 255, 255),
+        color=rgb(255, 255, 255),
         thickness=-1,
     )
+
+    DRAW_BLACK_TEXT = DrawConfig(fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                                 fontScale=5,
+                                 color=(rgb(0, 0, 0)),
+                                 thickness=-1)
+    DRAW_ON_TRANSPARENT = DrawConfig(
+        fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+        fontScale=1,
+        color=rgb(238, 255, 0),
+        thickness=3,
+    )
+    DRAW_TRANSPARENT_BOX = DrawConfig(fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                                      fontScale=1,
+                                      color=rgb(0, 36, 14),
+                                      thickness=-1)
 
 
 class DetectionMethod:
@@ -68,7 +92,8 @@ class ShapeSortMethods:
     DEFAULT = 0
     LEFT_TO_RIGHT_TOP_TO_BOTTOM = 1
     TOP_TO_BOTTOM_LEFT_TO_RIGHT = 2
-    TEST_2 = 3
+    TEST_2 = 3,
+    TEST_L2R = 4 
 
 
 class Shape():
@@ -93,34 +118,82 @@ class Shape():
         self.isMarked = False
         self.value = None  # Only in DetectionBox context
 
-    def draw(
-        self,
-        image,
-        label_shape=False,
-        label="",
-        draw_line_config=None,
-        draw_label_config=None,
-        display_image=False,
-    ):
+    def less(self, a, b):
+        center = self.centroid
+        if (a[0] - center[0] >= 0) and (b[0] - center[0] < 0):
+            return True
+        if (a[0] - center[0] < 0) and (b[0] - center[0] >= 0):
+            return False
+        if (a[0] - center[0] == 0) and (b[0] - center[0] == 0):
+            if (a[1] - center[1] >= 0) or (b[1] - center[1] >= 0):
+                return a[1] > b[1]
+            return b[1] > a[1]
+        # compute the cross product of vectors (center -> a) x (center -> b)
+        det = (a[0] - center[0]) * (b[1] - center[1]) - (b[0] - center[0]) * (a[1] - center[1])
+        if det < 0:
+            return True
+        if det > 0:
+            return False
+
+        d1 = (a[0] - center[0]) * (a[0] - center[0]) + (a[1] - center[1]) * (a[1] - center[1])
+        d2 = (b[0] - center[0]) * (b[0] - center[0]) + (b[1] - center[1]) * (b[1] - center[1])
+        return d1 > d2
+    def draw(self,
+             image,
+             label_shape=False,
+             label="",
+             draw_line_config=None,
+             draw_label_config=None,
+             display_image=False,
+             transparent_box=False):
         # Set DrawConfigs to defaults
         if not draw_line_config:
             draw_line_config = self.draw_line_config
         if not draw_label_config:
             draw_label_config = self.draw_label_config
-        # draw the shape
-        # cv2.polylines(image, [self.contour], True, draw_line_config.color, draw_line_config.thickness)
-        # Draw the contours in the image
-        cv2.drawContours(
-            image,
-            [self.contour],
-            -1,
-            draw_line_config.color,
-            draw_line_config.thickness,
-        )
+
+        if transparent_box == True:
+            transp_layer = image.copy()
+            final_marked = image.copy()
+            # Overlay Transparencies
+            alpha = 0.65
+            # Draw on transparency layer
+            cv2.rectangle(
+                final_marked,
+                self.vertices[0],
+                self.vertices[2],
+                constants.CLR_DARK_GRAY,
+                -1,
+            )
+
+            # Translucent
+            cv2.addWeighted(final_marked, alpha, transp_layer, 1 - alpha, 0,
+                            image)
+            # Draw on image after transparency layer
+            cv2.putText(
+                image,
+                label,
+                self.label_position,
+                cv2.FONT_HERSHEY_SIMPLEX,
+                constants.TEXT_SIZE + 1,
+                rgb(255, 255, 255),
+                int(1 + 3.5 * constants.TEXT_SIZE),
+            )
+          
+        else:
+            # Draw the contours in the image
+            cv2.drawContours(
+                image,
+                [self.contour],
+                -1,
+                draw_line_config.color,
+                draw_line_config.thickness,
+            )
+            if label_shape:
+                self.label(image, label, draw_label_config)
+
         # identify the label position
         # self.label_position = (self.vertices[0][0], self.vertices[0][1])
-        if label_shape:
-            self.label(image, label, self.draw_label_config)
         if display_image:
             plshow("shape", image)
         return image
@@ -146,20 +219,29 @@ class Shape():
                 sub_image=self.processing_mask, debug_level=0)
 
     def _get_vertices(self, contour, sort):
-
         cnt = contour
+        #! Deprecated in favor of np.mean
         # Calculate centroid coordinates
-        M = cv2.moments(cnt)
-        cx = int(M['m10'] / M['m00'])
-        cy = int(M['m01'] / M['m00'])
-        # Set label position to centroid coordinates
-        self.label_position = (cx - 10, cy)
-        approx = cv2.approxPolyDP(cnt, 0.01 * cv2.arcLength(cnt, True), True)
-        vertices = np.int0(
-            [approx[0][0], approx[1][0], approx[2][0], approx[3][0]])
+        # M = cv2.moments(cnt)
+        # cx = int(M['m10'] / M['m00'])
+        # cy = int(M['m01'] / M['m00'])
+        # # Set label position to centroid coordinates
+        # label_position = (cx - 10, cy + 15)
+        #! Deprecated in favor of minAreaRect...needed to guarantee 4 vertices.
+          # approx = cv2.approxPolyDP(cnt, 0.01 * cv2.arcLength(cnt, True), True)
+        # vertices = np.int0(
+        #     [approx[0][0], approx[1][0], approx[2][0], approx[3][0]])
+        # print(f"Original: {vertices}")
+        rect = cv2.minAreaRect(self.contour)
+        vertices = cv2.boxPoints(rect)
+        vertices = np.int0(vertices)
+        self.centroid = np.round(np.mean(vertices, axis=0)).astype(int)
+        self.label_position = (self.centroid[0] - 10, self.centroid[1] + 15)
+       
+      
         if sort:
             vertices = self._sort_vertices(vertices)
-
+            # print(f"Sorted: {vertices}")
         return vertices
 
     def _sort_vertices(self, box):
@@ -251,7 +333,6 @@ class ShapeArray():
     # if sort_method == ShapeSortMethods.GROUP_SIMILAR_Y_SORT_BY_X:
     #     for shape in shapes:
     #         vertices = shape.vertices
-
     def _sort_shapes_test_2(self, sort_method, tolerance=30):
         shapes = self.shapes
         if sort_method == ShapeSortMethods.TOP_TO_BOTTOM_LEFT_TO_RIGHT:
@@ -335,7 +416,47 @@ class ShapeArray():
             flattened_boxes = [box for row in clustered_boxes for box in row]
             # concatenated_boxes = np.concatenate((row1, row2, row3), axis=0)
             return flattened_boxes
+        elif sort_method == ShapeSortMethods.TEST_L2R:
+            #https://stackoverflow.com/questions/29630052/ordering-coordinates-from-top-left-to-bottom-right
+            #detect the keypoints
+            params = cv2.SimpleBlobDetector_Params()
+            # params.minThreshold = 1
+            # params.maxThreshold = 256
+            # params.filterByArea = True
+            # params.minArea = 350
+            # params.filterByConvexity = False
+            # params.filterByInertia = False
+            detector = cv2.SimpleBlobDetector_create(params)
+            img=""
+            keypoints = detector.detect(img)
+            img_with_keypoints = cv2.drawKeypoints(img, keypoints, np.array([]), (0, 0, 255), 
+            cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
+            points = []
+            keypoints_to_search = keypoints[:]
+            while len(keypoints_to_search) > 0:
+                a = sorted(keypoints_to_search, key=lambda p: (p.pt[0]) + (p.pt[1]))[0]  # find upper left point
+                b = sorted(keypoints_to_search, key=lambda p: (p.pt[0]) - (p.pt[1]))[-1]  # find upper right point
+
+                cv2.line(img_with_keypoints, (int(a.pt[0]), int(a.pt[1])), (int(b.pt[0]), int(b.pt[1])), (255, 0, 0), 1)
+
+                # convert opencv keypoint to numpy 3d point
+                a = np.array([a.pt[0], a.pt[1], 0])
+                b = np.array([b.pt[0], b.pt[1], 0])
+
+                row_points = []
+                remaining_points = []
+                for k in keypoints_to_search:
+                    p = np.array([k.pt[0], k.pt[1], 0])
+                    d = k.size  # diameter of the keypoint (might be a theshold)
+                    dist = np.linalg.norm(np.cross(np.subtract(p, a), np.subtract(b, a))) / np.linalg.norm(b)   # distance between keypoint and line a->b
+                    if d/2 > dist:
+                        row_points.append(k)
+                    else:
+                        remaining_points.append(k)
+
+                points.extend(sorted(row_points, key=lambda h: h.pt[0]))
+                keypoints_to_search = remaining_points
         elif sort_method == ShapeSortMethods.TEST_2:
             detection_boxes = self.shapes
             # Get the list of y values in the upper left vertex for each detection box
@@ -451,21 +572,23 @@ class ShapeArray():
                 "direction": "horizontal",
             }
         }
-
+        src_image = cv2.cvtColor(src_image, cv2.COLOR_BGR2RGB)
         for shape in self.shapes:
             if len(shape.detection_boxes) == 27:
                 for idx, detection_box in enumerate(shape.detection_boxes):
+                    # Convert image from BGR to RGB
                     if detection_box.isMarked:
                         detection_box.value = shape.detection_boxes.labels[idx]
-                    else:
-                        detection_box.value = ""
-                    detection_box.draw(
-                        blank_image,
-                        label_shape=True,
-                        label=str(idx),
-                        draw_label_config=DrawConfigs.DEFAULT_LABEL,
-                        draw_line_config=DrawConfigs.DEFAULT_LINE,
-                        display_image=False)
+                        src_image = detection_box.draw(
+                            src_image,
+                            label_shape=True,
+                            label=detection_box.value,
+                            draw_label_config=DrawConfigs.DRAW_ON_TRANSPARENT,
+                            draw_line_config=DrawConfigs.DRAW_TRANSPARENT_BOX,
+                            transparent_box=True,
+                            display_image=False)
+            else:
+                detection_box.value = ""
 
         # for shape in self.shapes:
         #     if len(shape.detection_boxes) == 27:
@@ -496,7 +619,7 @@ class ShapeArray():
         # will have the same FieldType though that can't be guaranteed for
         # every case. Therefore, the only way to know is to define each in
         # the template.json.
-        plshow("img", blank_image)
+        plshow("img", src_image)
         return src_image
         # Store the results in each shape object
         # for idx, shape in enumerate(self.shapes):
@@ -549,11 +672,13 @@ class ShapeArray():
             proc_img,
             draw_line_config=DrawConfigs.DRAW_ON_BLANK,
             display_image=False)
+
         # if we invert proc_img, the marked boxes are now the filled boxes
         inverted_proc_sub_img = 255 - proc_sub_img
         shape.processing_mask = inverted_proc_sub_img
         shape.process_detection_boxes()
         isMarked = shape.isMarked
+
         return shape
 
     #! Deprecated, use process_shape
