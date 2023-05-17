@@ -13,13 +13,6 @@ from sklearn.cluster import KMeans
 
 def rgb(red, green, blue):
     return red, green, blue
-def sort_points_clockwise(points):
-    center = np.mean(points, axis=0)  # Calculate the center point
-    angles = np.arctan2(points[:, 1] - center[1], points[:, 0] - center[0])  # Calculate angles relative to the center point
-    sorted_indices = np.argsort(angles)  # Sort indices based on angles
-    sorted_points = points[sorted_indices]  # Sort the points based on the sorted indices
-    return sorted_points
-
 class DrawConfigs:
     """Repository of configurations for use with cv2 functions such as DrawContours(), PolyLines(), and PutText()"""
 
@@ -77,7 +70,6 @@ class DrawConfigs:
                                       color=rgb(0, 36, 14),
                                       thickness=-1)
 
-
 class DetectionMethod:
     METHOD_1 = 1
     METHOD_2 = 2
@@ -86,19 +78,16 @@ class DetectionMethod:
     METHOD_5 = 5
     METHOD_6 = 6
     METHOD_7 = 7
-
-
 class ShapeSortMethods:
     DEFAULT = 0
     LEFT_TO_RIGHT_TOP_TO_BOTTOM = 1
     TOP_TO_BOTTOM_LEFT_TO_RIGHT = 2
     TEST_2 = 3,
-    TEST_L2R = 4 
+    TEST_L2R = 4
 
 
 class Shape():
-    """
-    Smallest unit for processing. A shape is usually within a ShapeArray
+    """Smallest unit for processing. A shape is usually within a ShapeArray
     which represents a Field Block in the template.
     """
 
@@ -118,26 +107,6 @@ class Shape():
         self.isMarked = False
         self.value = None  # Only in DetectionBox context
 
-    def less(self, a, b):
-        center = self.centroid
-        if (a[0] - center[0] >= 0) and (b[0] - center[0] < 0):
-            return True
-        if (a[0] - center[0] < 0) and (b[0] - center[0] >= 0):
-            return False
-        if (a[0] - center[0] == 0) and (b[0] - center[0] == 0):
-            if (a[1] - center[1] >= 0) or (b[1] - center[1] >= 0):
-                return a[1] > b[1]
-            return b[1] > a[1]
-        # compute the cross product of vectors (center -> a) x (center -> b)
-        det = (a[0] - center[0]) * (b[1] - center[1]) - (b[0] - center[0]) * (a[1] - center[1])
-        if det < 0:
-            return True
-        if det > 0:
-            return False
-
-        d1 = (a[0] - center[0]) * (a[0] - center[0]) + (a[1] - center[1]) * (a[1] - center[1])
-        d2 = (b[0] - center[0]) * (b[0] - center[0]) + (b[1] - center[1]) * (b[1] - center[1])
-        return d1 > d2
     def draw(self,
              image,
              label_shape=False,
@@ -179,7 +148,7 @@ class Shape():
                 rgb(255, 255, 255),
                 int(1 + 3.5 * constants.TEXT_SIZE),
             )
-          
+
         else:
             # Draw the contours in the image
             cv2.drawContours(
@@ -219,7 +188,10 @@ class Shape():
                 sub_image=self.processing_mask, debug_level=0)
 
     def _get_vertices(self, contour, sort):
-        cnt = contour
+        rect = cv2.minAreaRect(contour)
+        vertices = np.int0(cv2.boxPoints(rect))
+        self.centroid = np.round(np.mean(vertices, axis=0)).astype(int)
+        self.label_position = (self.centroid[0] - 10, self.centroid[1] + 15)
         #! Deprecated in favor of np.mean
         # Calculate centroid coordinates
         # M = cv2.moments(cnt)
@@ -228,20 +200,12 @@ class Shape():
         # # Set label position to centroid coordinates
         # label_position = (cx - 10, cy + 15)
         #! Deprecated in favor of minAreaRect...needed to guarantee 4 vertices.
-          # approx = cv2.approxPolyDP(cnt, 0.01 * cv2.arcLength(cnt, True), True)
+        # approx = cv2.approxPolyDP(cnt, 0.01 * cv2.arcLength(cnt, True), True)
         # vertices = np.int0(
         #     [approx[0][0], approx[1][0], approx[2][0], approx[3][0]])
         # print(f"Original: {vertices}")
-        rect = cv2.minAreaRect(self.contour)
-        vertices = cv2.boxPoints(rect)
-        vertices = np.int0(vertices)
-        self.centroid = np.round(np.mean(vertices, axis=0)).astype(int)
-        self.label_position = (self.centroid[0] - 10, self.centroid[1] + 15)
-       
-      
         if sort:
             vertices = self._sort_vertices(vertices)
-            # print(f"Sorted: {vertices}")
         return vertices
 
     def _sort_vertices(self, box):
@@ -301,7 +265,6 @@ class Shape():
         # Check if the black ratio is greater than the threshold
         return black_ratio > threshold
 
-
 class ShapeArray():
     """Array of Shapes"""
 
@@ -325,45 +288,6 @@ class ShapeArray():
 
     #? Should this be a public method so we can sort the ShapeArray on demand? Possibly helpful for multiprocessing
     #? Additionally, we need to assign an ID to each shape once they're in the proper order...I'd like to avoid another iteration
-    # Define the number of clusters and tolerance
-    # def _sort_shapes(self, sort_method, tolerance=30):
-    # shapes = self.shapes
-    # vertices = [shape.vertices]
-    # print(vertices)
-    # if sort_method == ShapeSortMethods.GROUP_SIMILAR_Y_SORT_BY_X:
-    #     for shape in shapes:
-    #         vertices = shape.vertices
-    def _sort_shapes_test_2(self, sort_method, tolerance=30):
-        shapes = self.shapes
-        if sort_method == ShapeSortMethods.TOP_TO_BOTTOM_LEFT_TO_RIGHT:
-            key_func = lambda shape: (round(
-                sum(vertex[0] for vertex in shape.vertices) / 4 / tolerance),
-                                      round(
-                                          sum(vertex[1] for vertex in shape.
-                                              vertices) / 4 / tolerance))
-        elif sort_method == ShapeSortMethods.LEFT_TO_RIGHT_TOP_TO_BOTTOM:
-            key_func = lambda shape: (round(
-                sum(vertex[1] for vertex in shape.vertices) / 4 / tolerance),
-                                      round(
-                                          sum(vertex[0] for vertex in shape.
-                                              vertices) / 4 / tolerance))
-        shapes_final = sorted(shapes, key=key_func)
-        return shapes_final
-
-    def _sort_shapes_test1(self, sort_method, tolerance=30):
-        shapes = self.shapes
-        if sort_method == ShapeSortMethods.TOP_TO_BOTTOM_LEFT_TO_RIGHT:
-            key_func = lambda shape: tuple(
-                (round(vertex[0] / tolerance), round(vertex[1] / tolerance))
-                for vertex in shape.vertices)
-        elif sort_method == ShapeSortMethods.LEFT_TO_RIGHT_TOP_TO_BOTTOM:
-            tolerance = 60
-            key_func = lambda shape: tuple(
-                (round(vertex[1] / tolerance), round(vertex[0] / tolerance))
-                for vertex in shape.vertices)
-        shapes_final = sorted(shapes, key=key_func)
-        return shapes_final
-
     def _sort_shapes(self, sort_method, tolerance=30):
         """Method for sorting shapes in a FieldBlock
 
@@ -427,18 +351,24 @@ class ShapeArray():
             # params.filterByConvexity = False
             # params.filterByInertia = False
             detector = cv2.SimpleBlobDetector_create(params)
-            img=""
+            img = ""
             keypoints = detector.detect(img)
-            img_with_keypoints = cv2.drawKeypoints(img, keypoints, np.array([]), (0, 0, 255), 
-            cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+            img_with_keypoints = cv2.drawKeypoints(
+                img, keypoints, np.array([]), (0, 0, 255),
+                cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
             points = []
             keypoints_to_search = keypoints[:]
             while len(keypoints_to_search) > 0:
-                a = sorted(keypoints_to_search, key=lambda p: (p.pt[0]) + (p.pt[1]))[0]  # find upper left point
-                b = sorted(keypoints_to_search, key=lambda p: (p.pt[0]) - (p.pt[1]))[-1]  # find upper right point
+                a = sorted(keypoints_to_search,
+                           key=lambda p: (p.pt[0]) +
+                           (p.pt[1]))[0]  # find upper left point
+                b = sorted(keypoints_to_search,
+                           key=lambda p: (p.pt[0]) -
+                           (p.pt[1]))[-1]  # find upper right point
 
-                cv2.line(img_with_keypoints, (int(a.pt[0]), int(a.pt[1])), (int(b.pt[0]), int(b.pt[1])), (255, 0, 0), 1)
+                cv2.line(img_with_keypoints, (int(a.pt[0]), int(a.pt[1])),
+                         (int(b.pt[0]), int(b.pt[1])), (255, 0, 0), 1)
 
                 # convert opencv keypoint to numpy 3d point
                 a = np.array([a.pt[0], a.pt[1], 0])
@@ -449,8 +379,11 @@ class ShapeArray():
                 for k in keypoints_to_search:
                     p = np.array([k.pt[0], k.pt[1], 0])
                     d = k.size  # diameter of the keypoint (might be a theshold)
-                    dist = np.linalg.norm(np.cross(np.subtract(p, a), np.subtract(b, a))) / np.linalg.norm(b)   # distance between keypoint and line a->b
-                    if d/2 > dist:
+                    dist = np.linalg.norm(
+                        np.cross(np.subtract(p, a), np.subtract(
+                            b, a))) / np.linalg.norm(
+                                b)  # distance between keypoint and line a->b
+                    if d / 2 > dist:
                         row_points.append(k)
                     else:
                         remaining_points.append(k)
@@ -528,6 +461,17 @@ class ShapeArray():
 
     def multi_process_all_shapes(self, src_image, proc_template_method,
                                  box_detection_method, debug_level):
+        """Process all shapes in parallel using multiprocessing.
+
+        Args:
+            src_image (numpy.ndarray): The source image to process.
+            proc_template_method (type): The method for processing the template.
+            box_detection_method (type): The method for detecting boxes.
+            debug_level (type): The level of debugging.
+
+        Returns:
+            numpy.ndarray: The processed image.
+        """
         template_config = None
         blank_image = np.zeros_like(src_image)
         blank_image.fill(255)
@@ -576,9 +520,9 @@ class ShapeArray():
         for shape in self.shapes:
             if len(shape.detection_boxes) == 27:
                 for idx, detection_box in enumerate(shape.detection_boxes):
-                    # Convert image from BGR to RGB
                     if detection_box.isMarked:
                         detection_box.value = shape.detection_boxes.labels[idx]
+                        #TODO Implement the DrawConfigs properly for transparent_box case
                         src_image = detection_box.draw(
                             src_image,
                             label_shape=True,
@@ -589,28 +533,6 @@ class ShapeArray():
                             display_image=False)
             else:
                 detection_box.value = ""
-
-        # for shape in self.shapes:
-        #     if len(shape.detection_boxes) == 27:
-        #         for idx, detection_box in enumerate(shape.detection_boxes):
-        #             detection_box.draw(
-        #                 src_image,
-        #                 label_shape=True,
-        #                 label=str(idx),
-        #                 draw_label_config=DrawConfigs.DEFAULT_LABEL,
-        #                 draw_line_config=DrawConfigs.DEFAULT_LINE,
-        #                 display_image=False)
-        # for shape in self.shapes:
-        #     if len(shape.detection_boxes) == 27:
-        #         for detection_box in shape.detection_boxes:
-        #             if detection_box.isMarked:
-        #                 detection_box.draw(
-        #                     src_image,
-        #                     label_shape=True,
-        #                     label=str(detection_box.value),
-        #                     draw_label_config=DrawConfigs.DEFAULT_LABEL,
-        #                     draw_line_config=DrawConfigs.DEFAULT_LINE,
-        #                     display_image=False
         #                 )
         # TODO: At this point, we have all detection blocks and isMarked.
         # Now we need to group the detection boxes based on an inputted
@@ -637,6 +559,22 @@ class ShapeArray():
         box_detection_method,
         debug_level,
     ):
+        """Use with multiprocessing - process a shape by extracting a sub-image, applying template processing, detecting boxes, sorting boxes, and returning the processed shape.
+
+        Args:
+            idx (int): The index of the shape.
+            shape (Shape): The shape object to be processed.
+            src_image (numpy.ndarray): The source image containing the shape.
+            proc_template_method (str): The method for template processing.
+            box_detection_method (str): The method for box detection.
+            debug_level (int): The level of debug information to display.
+
+        Returns:
+            Shape: The processed shape object.
+            
+        Note:
+            For use with multiprocessing.
+        """
         proc_img = np.zeros_like(src_image)
         mask = np.zeros_like(src_image)
         cv2.fillPoly(mask, [shape.contour], (255, 255, 255))
@@ -681,7 +619,6 @@ class ShapeArray():
 
         return shape
 
-    #! Deprecated, use process_shape
     def process(
         self,
         src_image,
@@ -689,6 +626,23 @@ class ShapeArray():
         box_detection_method=DetectionMethod.METHOD_7,
         debug_level=0,
     ):
+        """Process a shape sequentially.
+            Args:
+                src_image (numpy.ndarray): The source image to be processed.
+                proc_template_method (int, optional): The method used for processing templates.
+                    Defaults to DetectionMethod.METHOD_6.
+                box_detection_method (int, optional): The method used for detecting boxes.
+                    Defaults to DetectionMethod.METHOD_7.
+                debug_level (int, optional): The debug level for controlling verbosity.
+                    Defaults to 0.
+
+            Returns:
+                numpy.ndarray: The processed image with marked detection boxes.
+
+            Note:
+                The `src_image` is modified in-place.
+        """
+
         # TODO Add in validation checks based on template...eg. check shapes match rows*cols
 
         if debug_level == 1:
@@ -828,13 +782,10 @@ class ShapeArray():
         for idx, shape in enumerate(self.shapes):
             continue
 
-
 def remove_contours(image, contours):
     for c in contours:
         cv2.drawContours(image, [c], -1, (0, 0, 0), -1)
     return image
-
-
 def imgsize(sub_image):
     # Get the size of the sub-image in bytes
     sub_image_size_bytes = sub_image.nbytes
@@ -845,8 +796,15 @@ def imgsize(sub_image):
     # Print the sub-image size in KB and MB
     print("Sub-image size: {} KB ({:.2f} MB)".format(int(sub_image_size_kb),
                                                      sub_image_size_mb))
-
-
+def sort_points_clockwise(points):
+    center = np.mean(points, axis=0)  # Calculate the center point
+    angles = np.arctan2(
+        points[:, 1] - center[1], points[:, 0] -
+        center[0])  # Calculate angles relative to the center point
+    sorted_indices = np.argsort(angles)  # Sort indices based on angles
+    sorted_points = points[
+        sorted_indices]  # Sort the points based on the sorted indices
+    return sorted_points
 def plshow(title, image):
     plt.title(title)
     plt.imshow(image)
