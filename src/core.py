@@ -1,7 +1,6 @@
 import os
 from collections import defaultdict
 from typing import Any
-
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,6 +10,7 @@ from src.logger import logger
 from src.utils.image import CLAHE_HELPER, ImageUtils
 from src.utils.interaction import InteractionUtils
 from src.custom.shapey import *
+
 
 class ImageInstanceOps:
     """Class to hold fine-tuned utilities for a group of images. One instance for each processing directory."""
@@ -66,12 +66,25 @@ class ImageInstanceOps:
             tuning_config.dimensions.processing_height,
         )
 
-        field_blocks = self.get_shapes(in_omr)
+        master_processor = MasterProcessor(in_omr)
+        master_processor.master_process(multi_processing=False, debug_level=1)
+        print(0/0)
+        # master_processor.get_field_blocks()
+        # master_processor.sort_field_blocks()
+        # # master_processor.draw_field_blocks(display_image=True)
+        # master_processor.get_detection_boxes()
+        # master_processor.draw_detection_boxes()
+
         src_img = cv2.cvtColor(in_omr, cv2.COLOR_BGR2RGB).copy()
         debug_level = 0
         if debug_level == 1:
             for idx, field_block in enumerate(field_blocks):
-                field_block.draw(src_img, label_shape=True, label=str(idx), draw_line_config=DrawConfigs.DEFAULT_LINE, draw_label_config=DrawConfigs.LARGE_FONT_IN_WHITE)
+                field_block.draw(
+                    src_img,
+                    label_shape=True,
+                    label=str(idx),
+                    draw_line_config=DrawConfigs.DEFAULT_LINE,
+                    draw_label_config=DrawConfigs.LARGE_FONT_IN_WHITE)
             plshow("Field Blocks", src_img)
         # boo = in_omr.copy()
         # plshow("hi", field_blocks.draw(boo, label_shapes=True, draw_label_config=DrawConfigs.LARGE_FONT_IN_WHITE, draw_line_config=DrawConfigs.DEFAULT_LINE))
@@ -79,8 +92,9 @@ class ImageInstanceOps:
         # shapes.draw(in_omr, label_shapes=True, draw_label_config=DrawConfigs.UPPER_LEFT_LARGE_LABEL, display_image=True)
         # Set detection methods
         proc_template_method = DetectionMethod.METHOD_6
-        box_detection_method = DetectionMethod.METHOD_7
-        multi = True
+        box_detection_method = DetectionMethod.METHOD_8
+        multi = False
+
         if multi:
             # Call shapes.process() method
             start_time = time.perf_counter()
@@ -90,14 +104,14 @@ class ImageInstanceOps:
                 box_detection_method=box_detection_method,
                 debug_level=0,
             )
-            
-           
+
             end_time = time.perf_counter()
             execution_time = end_time - start_time
             print("Execution time for Multiprocessing: {:.6f} seconds".format(
                 execution_time))
         else:
             start_time = time.perf_counter()
+
             result = field_blocks.process(
                 src_image=in_omr,
                 proc_template_method=proc_template_method,
@@ -106,7 +120,7 @@ class ImageInstanceOps:
             )
             end_time = time.perf_counter()
             execution_time = end_time - start_time
-            print("Execution tisme for Sequential Processing: {:.6f} seconds".
+            print("Execution time for Sequential Processing: {:.6f} seconds".
                   format(execution_time))
         print(0 / 0)
         return template
@@ -157,7 +171,7 @@ class ImageInstanceOps:
 
     def get_shapes(self, in_omr):
         """Returns shapey.ShapeArray"""
-        image = in_omr
+        image = in_omr.copy()
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         orig = image.copy()
         overlay = image.copy()
@@ -177,7 +191,7 @@ class ImageInstanceOps:
                                                cv2.CHAIN_APPROX_SIMPLE)
         # Iterate through the contours and filter for rectangles
         # cv2.drawContours(image, contours, -1, (0, 255, 0), 2)
-        shapes = []
+        master_processor = MasterProcessor(in_omr)
         for cnt in contours:
             approx = cv2.approxPolyDP(cnt, 0.01 * cv2.arcLength(cnt, True),
                                       True)
@@ -186,12 +200,13 @@ class ImageInstanceOps:
             # Only consider rectangles with a width and height greater than 50 pixels
             if w > 200 and h > 200 and w < 1000 and h < 1000:
                 # box =  np.int0([approx[0][0], approx[1][0], approx[2][0], approx[3][0]])
-                shape = Shape(cnt)
-                shapes.append(shape)
-        shapes = ShapeArray(shapes).sort_shapes(
-            sort_method=ShapeSortMethods.TOP_TO_BOTTOM_LEFT_TO_RIGHT,
-            tolerance=30)
-        return shapes
+                field_block = FieldBlock(cnt)
+                master_processor.add_field_block(field_block)
+                # shapes.append(field_block)
+        # shapes = ShapeArray(shapes).sort_shapes(
+        #     sort_method=ShapeSortMethods.TOP_TO_BOTTOM_LEFT_TO_RIGHT,
+        #     tolerance=30)
+        return master_processor
 
     def gen_field_blocks():
         # naming convention
