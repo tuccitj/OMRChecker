@@ -1,6 +1,7 @@
 import itertools
 import cv2
 from imutils import contours as cntx
+from matplotlib import pyplot as plt
 import numpy as np
 from src.custom.shapey import DrawConfigs, Shape, ShapeArray, plshow, rgb
 from itertools import chain
@@ -1248,6 +1249,7 @@ def method8(src_img, idx="", height="", width="", debug_level=0):
     return shapes, contours
 def method9(src_img, idx="", debug_level=0):
     src_img = src_img.copy()
+    src_img_2 = src_img.copy()
     idx = idx + 1
     # if idx in [34, 45, 51, 52, 56]
     #         debug_level = 1
@@ -1260,10 +1262,12 @@ def method9(src_img, idx="", debug_level=0):
 
     # Apply Gaussian blur to reduce noise
     blur = cv2.GaussianBlur(gray, (3, 3), 2)
-
+ 
     # Find horizontal and vertical lines using HoughLinesP
     thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                   cv2.THRESH_BINARY_INV, 57, 5)
+    assess = thresh.copy()
+    
     if debug_level == 1:
         plshow(f"Edges From Adaptive Thresholding {idx}", thresh)
     # Filter out all numbers and noise to isolate only boxes
@@ -1450,36 +1454,135 @@ def method9(src_img, idx="", debug_level=0):
     cnts, _ = cntx.sort_contours(cnts, method="top-to-bottom")
     shapes = []
     contours = []
-    assess = thresh.copy()
+    
+    
+    
     #! After Gridlines starts here
-    if debug_level == 2:
-        plshow("Assess Initial (Adaptive thresh)", assess)
-    #For each detection box, draw blank
+
+    gray = src_img_2
+    # Apply Gaussian blur to reduce noise
+    blurred = cv2.GaussianBlur(gray, (3, 3), 2)
+    # for cnt in cnts:
+    #     rect = cv2.minAreaRect(cnt)
+    #     # Retrieve the four corner points of the rectangle
+    #     box_points = cv2.boxPoints(rect)
+    #     box_points = np.int0(box_points)
+    #     # Draw the minimum area rectangle
+    #     cv2.drawContours(blurred, [box_points], 0, (0, 0, 0), 2)
+        
+    mask = np.zeros_like(blurred)
     for cnt in cnts:
         rect = cv2.minAreaRect(cnt)
         # Retrieve the four corner points of the rectangle
         box_points = cv2.boxPoints(rect)
         box_points = np.int0(box_points)
         # Draw the minimum area rectangle
-        cv2.drawContours(assess, [box_points], 0, (0, 0, 0), 2)
+        # cv2.drawContours(assess, [box_points], 0, (0, 0, 0), 2)
+        # Draw the minimum area rectangle on the mask
+        cv2.drawContours(mask, [box_points], 0, (255, 255, 255), -1)
+    masked_image = cv2.bitwise_and(blurred, mask)
+    
     if debug_level == 2:
-        plshow("Isolate Detection Boxes", assess)
-    cnts = cv2.findContours(assess, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    cnts = cnts[0] if len(cnts) == 2 else cnts[1]
-     #TODO For debugging, remove this, or implement fully
-    for cnt in cnts:
-        area = cv2.contourArea(cnt)
-        if area < 2000:
-            cv2.drawContours(initial_detected_contours, [cnt], -1, rgb(255,255,255), -1)
+        plshow("Masked Img", masked_image)
+        # Apply the mask to the 'assess' image
+    
+
+
+    ret, mask2 = cv2.threshold(masked_image, 0, 255, cv2.THRESH_OTSU)
+    inverted_mask2 = cv2.bitwise_not(mask2)
     if debug_level == 2:
-        plshow("Contours to be filtered", initial_detected_contours)
+
+        print(f'Threshold: {ret}')
+        plshow("Masked 2", mask2)
+        plshow("Masked 2", inverted_mask2)
+        plshow("Masked 2", cv2.cvtColor(inverted_mask2, cv2.COLOR_BGR2RGB))
+    return inverted_mask2
+    
+
+    # fig, ax = plt.subplots(1, 2, figsize=(12, 5))
+    # ax[0].imshow(cv2.cvtColor(gray, cv2.COLOR_BGR2RGB))
+    # ax[1].imshow(mask2)
+    # # Find horizontal and vertical lines using HoughLinesP
+    # thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+    #                               cv2.THRESH_BINARY_INV, 101, 11)
+    # if debug_level == 2:
+    #     plshow("THRESH", thresh)
+    # if debug_level == 2:
+    #     plshow(f"Assess Initial (Adaptive thresh) {idx}", assess)
+    #For each detection box, draw blank
+    # Create a blank mask with the same shape as 'assess'
+    # mask = np.zeros_like(assess)
+    # for cnt in cnts:
+    #     rect = cv2.minAreaRect(cnt)
+    #     # Retrieve the four corner points of the rectangle
+    #     box_points = cv2.boxPoints(rect)
+    #     box_points = np.int0(box_points)
+    #     # Draw the minimum area rectangle
+    #     # cv2.drawContours(assess, [box_points], 0, (0, 0, 0), 2)
+    #     # Draw the minimum area rectangle on the mask
+    #     cv2.drawContours(mask, [box_points], 0, (255, 255, 255), -1)
+    # if debug_level == 2:
+    #     plshow("Mask", mask)
+    #     # Apply the mask to the 'assess' image
+        
+    # masked_image = cv2.bitwise_and(assess, mask)
+    
+    # if debug_level == 2:s
+    #     plshow("Masked image", masked_image)
+
+    # if debug_level == 2:
+    #     plshow("Isolate Detection Boxes", assess)
+    # cnts, hierarchy = cv2.findContours(assess, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    # # Convert 'assess' image to RGB format
+    # assess_rgb = cv2.cvtColor(assess, cv2.COLOR_GRAY2RGB)
+
+    # # Create a blank image to draw the contours
+    # contour_img = np.zeros_like(assess_rgb)
+
+    # # Define a list of colors to assign to each level
+    # colors = [(0, 0, 255), (0, 255, 0), (255, 0, 0), (255, 255, 0), (255, 0, 255), (0, 255, 255)]
+
+    # # Iterate over the contours and hierarchy
+    # for i, cnt in enumerate(cnts):
+    #     color_index = i % len(colors)  # Get the index of the color for the current contour level
+    #     color = colors[color_index]
+    #     # Draw the contour with the assigned color
+    #     cv2.drawContours(contour_img, [cnt], 0, color, -1, cv2.LINE_AA, hierarchy, maxLevel=0)
+    # plshow(f"Hierarchy for {idx}", contour_img)
+    # cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+    #  #TODO For debugging, remove this, or implement fully
+    # for cnt in cnts:
+    #     area = cv2.contourArea(cnt)
+    #     print(area)
+    #     if 2500 > area > 1000:
+    #         epsilon = 0.04 * cv2.arcLength(cnt, True)
+    #         approx = cv2.approxPolyDP(cnt, epsilon, True)
+    #         # if cv2.isContourConvex(approx):
+    #         cv2.drawContours(initial_detected_contours, [cnt], -1, rgb(255,255,255), -1)
+    # if debug_level == 2:
+    #     plshow(f"Contours to be filtered {idx}", initial_detected_contours)
+    #THIS IS ISOLATING! IT DOES IT BECAUE THE FILLED IN ARE PART OF THE LARGER CONTOUR AND THE WHATEVS ARE STILL THEIR OWN CONTOURS
+    #      for cnt in cnts:
+    #     area = cv2.contourArea(cnt)
+    #     print(area)
+    #     if 3000 > area > 1500.0:
+    #         epsilon = 0.04 * cv2.arcLength(cnt, True)
+    #         approx = cv2.approxPolyDP(cnt, epsilon, True)
+    #         # if cv2.isContourConvex(approx):
+    #         cv2.drawContours(initial_detected_contours, [cnt], -1, rgb(255,255,255), -1)
+    # if debug_level == 2:
+    #     plshow(f"Contours to be filtered {idx}", initial_detected_contours)
     for cnt in cnts:
         area = cv2.contourArea(cnt)
         print(idx, area)
-        if area < 1000:
+        if area < 1500:
             cv2.drawContours(assess, [cnt], -1, rgb(0,0,0), -1)
+        if 1500 < area < 3000:
+            cv2.drawContours(assess, [cnt], -1, rgb(0,0,0), -1)
+            
+                
     if debug_level == 2:
-        plshow("After filtered", assess )
+        plshow(f"After filtered {idx}", assess )
     
     return shapes, contours
 def method10(src_img, idx="", debug_level=0):

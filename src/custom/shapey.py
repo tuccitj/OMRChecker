@@ -836,7 +836,7 @@ class DetectionBox(Shape):
             bool: True if the ratio of black pixels within the detection box is greater
                 than the given threshold, False otherwise.
         """
-        sub_img = self.parent.sub_img
+        sub_img = self.parent.proc_mask
         if debug_level == 1:
             plshow("Inputted Image", sub_img)
             mask = np.zeros_like(sub_img)
@@ -851,14 +851,10 @@ class DetectionBox(Shape):
             masked_image = cv2.bitwise_and(sub_img, mask)
         # Count the number of black pixels within the detection box area
         num_black_pixels = cv2.countNonZero(masked_image)
-        logger.info("🚀 ~ file: shapey.py:277 ~ num_black_pixels:",
-                    num_black_pixels)
         # Calculate the area of the detection box
         box_area = cv2.contourArea(self.contour)
-        logger.info("🚀 ~ file: shapey.py:280 ~ box_area:", box_area)
         # Calculate the ratio of black pixels to the total area
         black_ratio = num_black_pixels / box_area
-        logger.info("🚀 ~ file: shapey.py:283 ~ black_ratio:", black_ratio)
         # Check if the black ratio is greater than the threshold
         return black_ratio > threshold
 
@@ -890,10 +886,8 @@ class FieldBlock(Shape):
         self.detection_boxes: List[DetectionBox] = []
         self.processing_mask = None
         self.average_mean_intensity = None
-
     def add_detection_box(self, detection_box: DetectionBox):
         self.detection_boxes.append(detection_box)
-
     def get_detection_boxes(
         self,
         idx,
@@ -956,7 +950,7 @@ class FieldBlock(Shape):
         sub_img_height = self.height
         sub_img_width = self.width
         if detection_method == DetectionMethod.METHOD_9:
-            detection_boxes, db_contours = gridfinder.method9(
+            self.proc_mask = gridfinder.method9(
                 src_img=self.sub_img,
                 idx=idx,
                 debug_level=debug_level)
@@ -1239,7 +1233,11 @@ class MasterProcessor:
             self.sort_field_blocks()
             if debug_level == 1:
                 self.draw_field_blocks(display_image=True)
-            field_blocks_to_process = [46, 47]
+            # field_blocks_to_process = [51,52,56]
+            field_blocks_to_process = []
+            
+            # field_blocks_to_process = list(range(45, 60))
+
             for idx, field_block in enumerate(self.field_blocks):
                 if not field_blocks_to_process or (
                         idx + 1) in field_blocks_to_process:
@@ -1317,7 +1315,7 @@ class MasterProcessor:
         field_block.get_proc_mask(
             idx=idx,
             detection_method=DetectionMethod.METHOD_9,
-            debug_level=2,
+            debug_level=0,
             display_image=False)
         [
             detection_box.checkIsMarked()
@@ -1346,7 +1344,7 @@ class MasterProcessor:
             for idx, detection_box in enumerate(field_block.detection_boxes):
                 detection_box.draw(canvas,
                                    label_shape=True,
-                                   label=str(idx),
+                                   label=str(detection_box._meetsBlackThreshold())[0],
                                    draw_line_config=DrawConfigs.DEFAULT_LINE,
                                    draw_label_config=DrawConfigs.DEFAULT_LABEL,
                                    display_image=False,

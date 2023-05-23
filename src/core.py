@@ -69,7 +69,7 @@ class ImageInstanceOps:
 
         start_time = time.perf_counter()
         master_processor = MasterProcessor(in_omr)
-        master_processor.master_process(multi_processing=False, debug_level=1)
+        master_processor.master_process(multi_processing=True, debug_level=1)
         end_time = time.perf_counter()
         execution_time = end_time - start_time
         print("Execution time for Sequential Processing: {:.6f} seconds".
