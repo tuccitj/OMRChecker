@@ -1,5 +1,6 @@
 import os
 from collections import defaultdict
+import time
 from typing import Any
 import cv2
 import matplotlib.pyplot as plt
@@ -66,8 +67,23 @@ class ImageInstanceOps:
             tuning_config.dimensions.processing_height,
         )
 
+        start_time = time.perf_counter()
         master_processor = MasterProcessor(in_omr)
         master_processor.master_process(multi_processing=False, debug_level=1)
+        end_time = time.perf_counter()
+        execution_time = end_time - start_time
+        print("Execution time for Sequential Processing: {:.6f} seconds".
+                format(execution_time))
+        # in_omr = cv2.GaussianBlur(in_omr, (3, 3), 1)
+        # plshow("IN_OMR", in_omr)
+        # master_processor = MasterProcessor(in_omr)
+        # start_time = time.perf_counter()
+        # master_processor = MasterProcessor(in_omr)
+        # master_processor.master_process(multi_processing=True, debug_level=1)
+        # end_time = time.perf_counter()
+        # execution_time = end_time - start_time
+        # print("Execution time for Parallel Processing: {:.6f} seconds".
+        #         format(execution_time))
         print(0/0)
         # master_processor.get_field_blocks()
         # master_processor.sort_field_blocks()

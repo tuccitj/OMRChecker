@@ -16,6 +16,7 @@ from sklearn.cluster import KMeans
 def rgb(red, green, blue):
     return red, green, blue
 
+
 class DrawConfigs:
     """Repository of configurations for use with cv2 functions such as DrawContours(), PolyLines(), and PutText()"""
 
@@ -73,6 +74,7 @@ class DrawConfigs:
                                       color=rgb(0, 36, 14),
                                       thickness=-1)
 
+
 class DetectionMethod:
     METHOD_1 = 1
     METHOD_2 = 2
@@ -82,6 +84,8 @@ class DetectionMethod:
     METHOD_6 = 6
     METHOD_7 = 7
     METHOD_8 = 8
+    METHOD_9 = 9
+    METHOD_11 = 11
 
 
 class ShapeSortMethods:
@@ -237,6 +241,7 @@ class Shape():
         box = sorted_lowest_y_list.copy()
         box = np.int0(box)
         return box
+
 
 #! Deprecated in favor of MasterProcessor
 class ShapeArray():
@@ -802,13 +807,18 @@ class DetectionBox(Shape):
     ):
         super().__init__(contour, draw_line_config, draw_label_config)
         self.parent: FieldBlock = parent
+        self.mean_intensity = self._getMeanIntensity()
         self.isMarked = False
         self.value = None
 
     def set_parent(self, parent):
         self.parent = parent
 
-    def _meetsBlackThreshold(self, sub_image, threshold=0.5, debug_level=0):
+    def checkIsMarked(self):
+        if self.mean_intensity < self.parent.getAverageMeanIntensity():
+            self.isMarked = True
+
+    def _meetsBlackThreshold(self, threshold=0.5, debug_level=0):
         """Processes a sub-image at a shape level, assuming that the input is a grayscale
         image where the detection box areas should have non-zero values. The zero
         values are used to determine if the black threshold is met.
@@ -826,18 +836,19 @@ class DetectionBox(Shape):
             bool: True if the ratio of black pixels within the detection box is greater
                 than the given threshold, False otherwise.
         """
+        sub_img = self.parent.sub_img
         if debug_level == 1:
-            plshow("Inputted Image", sub_image)
-            mask = np.zeros_like(sub_image)
+            plshow("Inputted Image", sub_img)
+            mask = np.zeros_like(sub_img)
             plshow("mask", mask)
             cv2.drawContours(mask, [self.contour], 0, 255, -1)
             plshow("mask w/drawn detection box", mask)
-            masked_image = cv2.bitwise_and(sub_image, mask)
+            masked_image = cv2.bitwise_and(sub_img, mask)
             plshow("masked image", masked_image)
         else:
-            mask = np.zeros_like(sub_image)
+            mask = np.zeros_like(sub_img)
             cv2.drawContours(mask, [self.contour], 0, 255, -1)
-            masked_image = cv2.bitwise_and(sub_image, mask)
+            masked_image = cv2.bitwise_and(sub_img, mask)
         # Count the number of black pixels within the detection box area
         num_black_pixels = cv2.countNonZero(masked_image)
         logger.info("🚀 ~ file: shapey.py:277 ~ num_black_pixels:",
@@ -859,7 +870,7 @@ class DetectionBox(Shape):
         x, y = int(center_x - width / 2), int(center_y - height / 2)
         w, h = int(width), int(height)
         # Extract the ROI from the processing mask image
-        roi = self.field_block.processing_mask[y:y + h, x:x + w]
+        roi = self.parent.sub_img[y:y + h, x:x + w]
         # Compute the mean intensity of the ROI
         mean_intensity = cv2.mean(roi)[0]
         return mean_intensity
@@ -878,6 +889,7 @@ class FieldBlock(Shape):
         self.sub_img = None
         self.detection_boxes: List[DetectionBox] = []
         self.processing_mask = None
+        self.average_mean_intensity = None
 
     def add_detection_box(self, detection_box: DetectionBox):
         self.detection_boxes.append(detection_box)
@@ -893,6 +905,8 @@ class FieldBlock(Shape):
         mask = np.zeros_like(self.src_img)
         cv2.fillPoly(mask, [self.contour], (255, 255, 255))
         self.sub_img = cv2.bitwise_and(self.src_img, mask)
+        # self.processing_mask = sub_img
+
         sub_img = self.sub_img.copy()
         sub_img_height = self.height
         sub_img_width = self.width
@@ -924,15 +938,48 @@ class FieldBlock(Shape):
             plshow(f"_get_detection_boxes({idx}, {detection_method})", sub_img)
 
         # should probably sort first...
+    def get_proc_mask(
+        self,
+        idx,
+        detection_method=DetectionMethod.METHOD_11,
+        debug_level=0,
+        display_image=False,
+    ):
+        proc_img = np.zeros_like(self.src_img)
+        mask = np.zeros_like(self.src_img)
+        cv2.fillPoly(mask, [self.contour], (255, 255, 255))
+        self.sub_img = cv2.bitwise_and(self.src_img, mask)
+        
+        # self.processing_mask = sub_img
+
+        sub_img = self.sub_img.copy()
+        sub_img_height = self.height
+        sub_img_width = self.width
+        if detection_method == DetectionMethod.METHOD_9:
+            detection_boxes, db_contours = gridfinder.method9(
+                src_img=self.sub_img,
+                idx=idx,
+                debug_level=debug_level)
+        if display_image:
+            # Draws detection box on a blank sub_image - not helpful yet
+            NotImplemented
     def sort_detection_boxes(self):
         self.detection_boxes = sort_shapes(
             self.detection_boxes,
             sort_method=ShapeSortMethods.GROUP_Y_LEFT_TO_RIGHT)
+    def getAverageMeanIntensity(self):
+        mean_intensities = [
+            detection_box.mean_intensity
+            for detection_box in self.detection_boxes
+        ]
+        average_mean_intensity = np.mean(mean_intensities)
+        self.average_mean_intensity = average_mean_intensity
+        return average_mean_intensity
 
 
 class ShapeDep():
-    """Smallest unit for processing. A shape is usually within a ShapeArray
-    which represents a Field Block in the template.
+    """Smallest unit for processing. A shaTypeError: '<' not supported between instances of 'float' and 'method'pe is usually within a ShapeArray
+    which represents a Field BTypeError: '<' not supported between instances of 'float' and 'method'lock in the template.
     """
 
     def __init__(
@@ -1146,6 +1193,7 @@ class ShapeDep():
         # Check if the black ratio is greater than the threshold
         return black_ratio > threshold
 
+
 class MasterProcessor:
 
     def __init__(self, src_img) -> None:
@@ -1180,8 +1228,8 @@ class MasterProcessor:
             # Use `map_async()` to execute `process_shape()` on each tuple in parallel.
             # the 'with' statement automatically calls the close() and join() methods on the pool
             with multiprocessing.Pool() as pool:
-                self.field_blocks = pool.starmap_async(self.process_field_block,
-                                                shape_args).get()
+                self.field_blocks = pool.starmap_async(
+                    self.process_field_block, shape_args).get()
             if debug_level == 1:
                 self.draw_detection_boxes(display_image=True)
             # check that detection box is expected value (27 for testing purposes)
@@ -1191,20 +1239,22 @@ class MasterProcessor:
             self.sort_field_blocks()
             if debug_level == 1:
                 self.draw_field_blocks(display_image=True)
-
+            field_blocks_to_process = [46, 47]
             for idx, field_block in enumerate(self.field_blocks):
-                
-                field_block.get_detection_boxes(
-                    idx=idx,
-                    detection_method=DetectionMethod.METHOD_8,
-                    debug_level=0,
-                    display_image=False)
-                field_block.sort_detection_boxes()
+                if not field_blocks_to_process or (
+                        idx + 1) in field_blocks_to_process:
+                    self.process_field_block(field_block=field_block,
+                                             idx=idx,
+                                             debug_level=0)
             if debug_level == 1:
                 self.draw_detection_boxes(display_image=True)
+            # for field_block in self.field_blocks:
+            #     for idx,box in enumerate(field_block.detection_boxes):
+            #         print(idx, box.mean_intensity)
 
     def add_field_block(self, field_block: FieldBlock):
         self.field_blocks.append(field_block)
+
     def get_field_blocks(self):
         """Gets FieldBlocks"""
         img = self.src_img.copy()
@@ -1238,6 +1288,7 @@ class MasterProcessor:
                 field_block = FieldBlock(cnt)
                 field_block.src_img = self.src_img
                 self.add_field_block(field_block)
+
     def sort_field_blocks(self):
         self.field_blocks = sort_shapes(
             self.field_blocks,
@@ -1263,7 +1314,17 @@ class MasterProcessor:
             debug_level=0,
             display_image=False)
         field_block.sort_detection_boxes()
+        field_block.get_proc_mask(
+            idx=idx,
+            detection_method=DetectionMethod.METHOD_9,
+            debug_level=2,
+            display_image=False)
+        [
+            detection_box.checkIsMarked()
+            for detection_box in field_block.detection_boxes
+        ]
         return field_block
+
     def draw_field_blocks(self, display_image=False):
         canvas = self.src_img.copy()
         for idx, field_block in enumerate(self.field_blocks):
@@ -1277,13 +1338,15 @@ class MasterProcessor:
         if display_image:
             plshow("Field Blocks", canvas)
         return canvas
+
     def draw_detection_boxes(self, display_image=False):
         canvas = self.src_img.copy()
+        
         for field_block in self.field_blocks:
             for idx, detection_box in enumerate(field_block.detection_boxes):
                 detection_box.draw(canvas,
                                    label_shape=True,
-                                   label=f"{idx}",
+                                   label=str(idx),
                                    draw_line_config=DrawConfigs.DEFAULT_LINE,
                                    draw_label_config=DrawConfigs.DEFAULT_LABEL,
                                    display_image=False,

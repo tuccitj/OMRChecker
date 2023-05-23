@@ -1057,8 +1057,6 @@ def method7(src_img, idx="", height="", width="", debug_level=0):
 def method8(src_img, idx="", height="", width="", debug_level=0):
     src_img = src_img.copy()
     idx = idx + 1
-    # if idx in [34, 45, 51, 52, 56]
-    #         debug_level = 1
     if debug_level == 3:
         if idx in [34, 45, 51, 52, 56]:
             debug_level = 1
@@ -1067,7 +1065,7 @@ def method8(src_img, idx="", height="", width="", debug_level=0):
     gray = src_img.copy()
 
     # Apply Gaussian blur to reduce noise
-    blur = cv2.GaussianBlur(gray, (3, 3), 0)
+    blur = cv2.GaussianBlur(gray, (3, 3), 2)
 
     # Find horizontal and vertical lines using HoughLinesP
     thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -1078,6 +1076,199 @@ def method8(src_img, idx="", height="", width="", debug_level=0):
     # cnts = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     cnts = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     
+    cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+    # Filter out noise
+    for c in cnts:
+        area = cv2.contourArea(c)
+        if area < 2000:
+            cv2.drawContours(thresh, [c], -1, (0, 0, 0), -1)
+
+    if debug_level == 1:
+        plshow(f"Edges After Filter {idx}", thresh)
+    lines = cv2.HoughLinesP(thresh,
+                            1,
+                            np.pi / 180,
+                            100,
+                            minLineLength=150,
+                            maxLineGap=10)
+
+    filtered_lines = []
+    ## TODO Possibly...if expected # of shapes not detected, change this number
+    angle_threshold = 0.4  # in radians
+    for line in lines:
+        x1, y1, x2, y2 = line[0]
+        angle = np.abs(np.arctan2(y2 - y1, x2 - x1))
+        if angle < angle_threshold or np.abs(angle -
+                                             np.pi / 2) < angle_threshold:
+            filtered_lines.append(line)
+
+    # Create empty binary images for horizontal and vertical lines
+    h_lines = np.zeros_like(gray)
+    v_lines = np.zeros_like(gray)
+    # Find the length of the longest line
+    longest_length = 0
+    for line in filtered_lines:
+        x1, y1, x2, y2 = line[0]
+        length = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+        if length > longest_length:
+            longest_length = length
+
+    # Extend all lines to the length of the longest line
+    for line in filtered_lines:
+        x1, y1, x2, y2 = line[0]
+        length = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+        if abs(y2 - y1) < abs(x2 - x1):
+            # Horizontal line
+            # Calculate the middle point of the line
+            mid_point = ((x1 + x2) // 2, (y1 + y2) // 2)
+
+            # Extend the line to the length of the longest line
+            x1_extended = int(mid_point[0] - length / 2)
+            x2_extended = int(mid_point[0] + length / 2)
+            y1_extended = y1
+            y2_extended = y2
+
+            cv2.line(
+                h_lines,
+                (x1_extended, y1_extended),
+                (x2_extended, y2_extended),
+                255,
+                thickness=2,
+            )
+        else:
+            # Vertical line
+            # Calculate the middle point of the line
+            mid_point = ((x1 + x2) // 2, (y1 + y2) // 2)
+
+            # Extend the line to the length of the longest line
+            y1_extended = int(mid_point[1] - length / 2)
+            y2_extended = int(mid_point[1] + length / 2)
+            x1_extended = x1
+            x2_extended = x2
+
+            cv2.line(
+                v_lines,
+                (x1_extended, y1_extended),
+                (x2_extended, y2_extended),
+                255,
+                thickness=2,
+            )
+
+
+    if debug_level == 1:
+        plshow(f"h_lines extended {idx}", h_lines)
+        plshow(f"v-lines extended {idx}", v_lines)
+    # Dilate the horizontal and vertical lines binary images
+    kernel_size = 5
+
+    h_lines_dilated = cv2.dilate(
+        h_lines,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_size, kernel_size)),
+        iterations=5,
+    )
+    v_lines_dilated = cv2.dilate(
+        v_lines,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_size, kernel_size)),
+        iterations=5,
+    )
+
+    if debug_level == 1:
+        plshow(f"h_lines_dilated {idx}", h_lines_dilated)
+        plshow(f"v_lines_dilated {idx}", v_lines_dilated)
+    lines_combined = cv2.bitwise_or(h_lines_dilated, v_lines_dilated)
+    if debug_level == 1:
+        plshow(f"lines_combines {idx}", lines_combined)
+    # Erode the binary mask to remove noise and small details
+    kernel_size = 3
+    lines_dilated = cv2.dilate(
+        lines_combined,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_size, kernel_size)),
+        iterations=5,
+    )
+    if debug_level == 1:
+        plshow(f"lines_dilated {idx}",lines_dilated)
+    lines_eroded = cv2.erode(
+        lines_dilated,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_size, kernel_size)),
+        iterations=9,
+    )
+    if debug_level == 1:
+        plshow(f"lines_eroded {idx}", lines_eroded)
+    # Apply the eroded binary mask to the original image
+    if debug_level == 1:
+        result = cv2.bitwise_and(img, img, mask=lines_eroded)
+        plshow(f"Final {idx}", result)
+    cnts = cv2.findContours(lines_eroded, cv2.RETR_TREE,
+                            cv2.CHAIN_APPROX_SIMPLE)
+    cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+    # Convert the tuple to a list
+    cnts = list(cnts)
+    # Remove the largest area contour
+    largest_contour = max(cnts, key=cv2.contourArea)
+    cnts.remove(largest_contour)
+    cnts, _ = cntx.sort_contours(cnts, method="top-to-bottom")
+    
+   
+    shapes = []
+    contours = []
+    # So at this point, there should be 27 contours...double check the logic removing the largest contour
+    # So we initialize each as a shape which gets the vertices based on the approximation of the contour.
+    # We then sort the vertices so the top left is in the top left
+    # We then generate a label position to be the top left
+    # once we have the vertices, we sort position based on them
+    # the label position is
+    for idx, cnt in enumerate(cnts):
+        try:
+            # cv2.drawContours(src_image, [cnt], -1, (0, 255, 0), 5)
+            shape = Shape(cnt)
+            shape.src_img = src_img
+            shapes.append(shape)
+            contours.append(cnt)
+
+        except:
+            cv2.drawContours(src_img, [cnt], -1, (0, 255, 0), 5)
+            plshow("lines_combined", lines_combined)
+            plshow("lines_eroded", lines_eroded)
+            plshow("exception", src_img)
+            print("errorrring")
+            ## TODO Log Errors
+            continue
+    if debug_level == 1 or debug_level == 2:
+        for idx, shape in enumerate(shapes):
+            shape.draw(
+                src_img,
+                label_shape=True,
+                label=str(idx),
+                draw_label_config=DrawConfigs.DEFAULT_LABEL,
+                draw_line_config=DrawConfigs.DEFAULT_LINE,
+                display_image=False,
+            )
+        plshow(f"Final Labeled {idx}", src_img)
+
+    return shapes, contours
+def method9(src_img, idx="", debug_level=0):
+    src_img = src_img.copy()
+    idx = idx + 1
+    # if idx in [34, 45, 51, 52, 56]
+    #         debug_level = 1
+    if debug_level == 3:
+        if idx in [34, 45, 51, 52, 56]:
+            debug_level = 1
+    img = cv2.cvtColor(src_img, cv2.COLOR_BGR2RGB)
+    initial_detected_contours  = np.zeros_like(src_img.copy())
+    gray = src_img.copy()
+
+    # Apply Gaussian blur to reduce noise
+    blur = cv2.GaussianBlur(gray, (3, 3), 2)
+
+    # Find horizontal and vertical lines using HoughLinesP
+    thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                  cv2.THRESH_BINARY_INV, 57, 5)
+    if debug_level == 1:
+        plshow(f"Edges From Adaptive Thresholding {idx}", thresh)
+    # Filter out all numbers and noise to isolate only boxes
+    # cnts = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    cnts = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     cnts = cnts[0] if len(cnts) == 2 else cnts[1]
     # # min_perimeter, max_perimeter = 215, 99999
     # # filtered_contours = [cnt for cnt in cnts if min_perimeter <= cv2.arcLength(cnt, closed=True) <= max_perimeter]
@@ -1257,46 +1448,40 @@ def method8(src_img, idx="", height="", width="", debug_level=0):
     largest_contour = max(cnts, key=cv2.contourArea)
     cnts.remove(largest_contour)
     cnts, _ = cntx.sort_contours(cnts, method="top-to-bottom")
-    
-   
     shapes = []
     contours = []
-    # So at this point, there should be 27 contours...double check the logic removing the largest contour
-    # So we initialize each as a shape which gets the vertices based on the approximation of the contour.
-    # We then sort the vertices so the top left is in the top left
-    # We then generate a label position to be the top left
-    # once we have the vertices, we sort position based on them
-    # the label position is
-    for idx, cnt in enumerate(cnts):
-        try:
-            # cv2.drawContours(src_image, [cnt], -1, (0, 255, 0), 5)
-            shape = Shape(cnt)
-            shape.src_img = src_img
-            shapes.append(shape)
-            contours.append(cnt)
-
-        except:
-            cv2.drawContours(src_img, [cnt], -1, (0, 255, 0), 5)
-            plshow("lines_combined", lines_combined)
-            plshow("lines_eroded", lines_eroded)
-            plshow("exception", src_img)
-            print("errorrring")
-            ## TODO Log Errors
-            continue
-    if debug_level == 1 or debug_level == 2:
-        for idx, shape in enumerate(shapes):
-            shape.draw(
-                src_img,
-                label_shape=True,
-                label=str(idx),
-                draw_label_config=DrawConfigs.DEFAULT_LABEL,
-                draw_line_config=DrawConfigs.DEFAULT_LINE,
-                display_image=False,
-            )
-        plshow(f"Final Labeled {idx}", src_img)
-
+    assess = thresh.copy()
+    #! After Gridlines starts here
+    if debug_level == 2:
+        plshow("Assess Initial (Adaptive thresh)", assess)
+    #For each detection box, draw blank
+    for cnt in cnts:
+        rect = cv2.minAreaRect(cnt)
+        # Retrieve the four corner points of the rectangle
+        box_points = cv2.boxPoints(rect)
+        box_points = np.int0(box_points)
+        # Draw the minimum area rectangle
+        cv2.drawContours(assess, [box_points], 0, (0, 0, 0), 2)
+    if debug_level == 2:
+        plshow("Isolate Detection Boxes", assess)
+    cnts = cv2.findContours(assess, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+     #TODO For debugging, remove this, or implement fully
+    for cnt in cnts:
+        area = cv2.contourArea(cnt)
+        if area < 2000:
+            cv2.drawContours(initial_detected_contours, [cnt], -1, rgb(255,255,255), -1)
+    if debug_level == 2:
+        plshow("Contours to be filtered", initial_detected_contours)
+    for cnt in cnts:
+        area = cv2.contourArea(cnt)
+        print(idx, area)
+        if area < 1000:
+            cv2.drawContours(assess, [cnt], -1, rgb(0,0,0), -1)
+    if debug_level == 2:
+        plshow("After filtered", assess )
+    
     return shapes, contours
-
 def method10(src_img, idx="", debug_level=0):
     src_img = src_img.copy()
     idx = idx + 1
@@ -1628,7 +1813,6 @@ def method11(src_img, idx="", height="", width="", debug_level=0):
         plshow(f"Final Labeled {idx}", src_img)
 
     return shapes, contours
-
 
 def grouper(iterable, n):
     args = [iter(iterable)] * n
